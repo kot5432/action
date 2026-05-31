@@ -7,17 +7,29 @@ import os
 from collections import defaultdict
 from datetime import datetime
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def data_path(name):
+    return os.path.join(BASE_DIR, name)
+
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+)
 
 def get_logs():
     rows = []
-    if not os.path.exists("log.csv"):
+    log_file = data_path("log.csv")
+    if not os.path.exists(log_file):
         return rows
 
-    read_path = "log.csv"
+    read_path = log_file
     try:
-        shutil.copy("log.csv", "temp.csv")
-        read_path = "temp.csv"
+        shutil.copy(log_file, data_path("temp.csv"))
+        read_path = data_path("temp.csv")
     except OSError:
         pass
 
@@ -172,7 +184,7 @@ def api_transitions():
 @app.route("/api/current")
 def api_current():
     try:
-        with open("current.json", "r", encoding="utf-8") as f:
+        with open(data_path("current.json"), "r", encoding="utf-8") as f:
             data = json.load(f)
         duration = int(time.time() - data.get("start_timestamp", time.time()))
         
@@ -285,14 +297,14 @@ def api_goal():
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         try:
-            with open("goals.json", "w", encoding="utf-8") as f:
+            with open(data_path("goals.json"), "w", encoding="utf-8") as f:
                 json.dump(goal_data, f, ensure_ascii=False, indent=2)
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)})
     else:
         try:
-            with open("goals.json", "r", encoding="utf-8") as f:
+            with open(data_path("goals.json"), "r", encoding="utf-8") as f:
                 goal_data = json.load(f)
             return jsonify(goal_data)
         except (FileNotFoundError, json.JSONDecodeError):
@@ -304,7 +316,7 @@ def api_goal_diff():
     logs = get_logs()
     
     try:
-        with open("goals.json", "r", encoding="utf-8") as f:
+        with open(data_path("goals.json"), "r", encoding="utf-8") as f:
             goal_data = json.load(f)
         goals = goal_data.get("goals", {})
     except (FileNotFoundError, json.JSONDecodeError):

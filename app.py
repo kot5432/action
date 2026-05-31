@@ -11,13 +11,18 @@ app = Flask(__name__)
 
 def get_logs():
     rows = []
-    try:
-        shutil.copy("log.csv", "temp.csv")
-    except FileNotFoundError:
+    if not os.path.exists("log.csv"):
         return rows
 
+    read_path = "log.csv"
     try:
-        with open("temp.csv", "r", encoding="utf-8") as f:
+        shutil.copy("log.csv", "temp.csv")
+        read_path = "temp.csv"
+    except OSError:
+        pass
+
+    try:
+        with open(read_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             for r in reader:
                 if len(r) >= 5:

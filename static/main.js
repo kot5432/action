@@ -1,4 +1,16 @@
 // Utilities
+function fetchApi(path) {
+    const useStatic = document.documentElement.dataset.useStaticApi === 'true';
+    if (!useStatic) return fetch(path);
+
+    if (path.startsWith('/api/trends')) {
+        const period = new URLSearchParams(path.split('?')[1] || '').get('period') || 'today';
+        return fetch(`/data/trends-${period}.json`);
+    }
+    const name = path.replace(/^\/api\//, '');
+    return fetch(`/data/${name}.json`);
+}
+
 function formatSec(seconds) {
     if (seconds < 60) return seconds + "秒";
     let m = Math.floor(seconds / 60);
@@ -31,6 +43,8 @@ function normalizeAppName(raw) {
 
     // --- Cursor ---
     if (exeName === 'cursor.exe' || lower.includes('cursor')) return 'Cursor';
+    // --- YouTube (check before Edge) ---
+    if (lower.includes('youtube')) return 'YouTube';
     // --- Edge ---
     if (exeName === 'msedge.exe' || lower.includes('msedge')) return 'Edge';
     // --- Chrome ---
@@ -38,8 +52,6 @@ function normalizeAppName(raw) {
         if (lower.includes('youtube')) return 'YouTube';
         return 'Chrome';
     }
-    // --- YouTube (standalone title) ---
-    if (lower.includes('youtube')) return 'YouTube';
     // --- Firefox ---
     if (exeName === 'firefox.exe') return 'Firefox';
     // --- VS Code ---
@@ -100,7 +112,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 // Real-time loop
 setInterval(() => {
-    fetch('/api/current')
+    fetchApi('/api/current')
         .then(r => r.json())
         .then(data => {
             // Live tracking section
@@ -132,7 +144,7 @@ function loadHome() {
     document.getElementById('previous-hour-title').innerText = '前の時間帯';
     document.getElementById('previous-hour-range').innerText = `${previousHour}:00 ───────────── ${currentHour}:00`;
 
-    fetch('/api/timeline')
+    fetchApi('/api/timeline')
         .then(r => r.json())
         .then(data => {
             // Filter data for current hour
@@ -155,7 +167,7 @@ function loadHome() {
         });
 
     // Load recent transitions
-    fetch('/api/transitions')
+    fetchApi('/api/transitions')
         .then(r => r.json())
         .then(data => {
             const recentList = document.getElementById('recent-transitions-list');
@@ -179,14 +191,12 @@ function loadHome() {
             });
         });
 
-    // Load insights
-    loadInsights();
 }
 
 // Load Transitions and App usage
 function loadTransitions() {
     // Load full timeline for details view — Gantt Chart
-    fetch('/api/timeline')
+    fetchApi('/api/timeline')
         .then(r => r.json())
         .then(data => {
             const viz = document.getElementById('full-timeline-viz');
@@ -312,7 +322,7 @@ function loadTransitions() {
         });
 
     // Load recent transitions
-    fetch('/api/transitions')
+    fetchApi('/api/transitions')
         .then(r => r.json())
         .then(data => {
             const recentList = document.getElementById('recent-transitions-list');
@@ -338,7 +348,7 @@ function loadTransitions() {
         });
 
     // Load time analysis
-    fetch('/api/time-analysis')
+    fetchApi('/api/time-analysis')
         .then(r => r.json())
         .then(data => {
             const timeAnalysisList = document.getElementById('time-analysis-list');
@@ -401,7 +411,7 @@ function loadTransitions() {
         });
 
     // Load app history
-    fetch('/api/app-history')
+    fetchApi('/api/app-history')
         .then(r => r.json())
         .then(data => {
             const appHistoryList = document.getElementById('app-history-list');
@@ -462,32 +472,9 @@ function loadTransitions() {
 loadHome();
 setInterval(loadHome, 10000); // refresh timeline every 10 sec
 
-// Load insights
-function loadInsights() {
-    fetch('/api/insights')
-        .then(r => r.json())
-        .then(data => {
-            const insightsList = document.getElementById('insights-list');
-            insightsList.innerHTML = '';
-
-            data.insights.forEach(insight => {
-                const insightItem = document.createElement('div');
-                insightItem.className = 'insight-item';
-                insightItem.innerHTML = `
-                    <div class="insight-title">${insight.title}</div>
-                    <div class="insight-value">${insight.value}</div>
-                `;
-                insightsList.appendChild(insightItem);
-            });
-        });
-}
-
-// Load insights on page load and in loadHome
-loadInsights();
-
 // Load habits
 function loadHabits() {
-    fetch('/api/habits')
+    fetchApi('/api/habits')
         .then(r => r.json())
         .then(data => {
             const habitsList = document.getElementById('habits-list');
@@ -521,7 +508,7 @@ let currentTrendPeriod = 'today';
 
 function loadTrends(period = 'today') {
     currentTrendPeriod = period;
-    fetch(`/api/trends?period=${period}`)
+    fetchApi(`/api/trends?period=${period}`)
         .then(r => r.json())
         .then(data => {
             const trendsContent = document.getElementById('trends-content');
@@ -759,7 +746,7 @@ document.getElementById('replay-btn').addEventListener('click', () => {
         btn.innerText = '▶ 再生';
     } else {
         // Start replay
-        fetch('/api/timeline')
+        fetchApi('/api/timeline')
             .then(r => r.json())
             .then(data => {
                 replayData = data;

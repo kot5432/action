@@ -952,40 +952,6 @@ body {
     transform: scale(1.05);
 }
 
-/* Today's Insights */
-.today-insights {
-    padding: 24px;
-    margin-bottom: 24px;
-}
-
-.insights-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.insight-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 8px;
-}
-
-.insight-title {
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--text-muted);
-}
-
-.insight-value {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--accent-hover);
-}
-
 .your-habits {
     padding: 24px;
     margin-bottom: 24px;

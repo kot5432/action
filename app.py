@@ -56,10 +56,10 @@ def normalize_app_name(app):
     app_lower = app.lower()
     exe_match = app.split('.exe')[0].split('[')[0].strip().lower() + '.exe'
     if 'cursor' in app_lower:          return 'Cursor'
+    if 'youtube' in app_lower:         return 'YouTube'
     if 'msedge' in app_lower:          return 'Edge'
     if 'chrome' in app_lower:
         return 'YouTube' if 'youtube' in app_lower else 'Chrome'
-    if 'youtube' in app_lower:         return 'YouTube'
     if 'firefox' in app_lower:         return 'Firefox'
     if 'code.exe' in app_lower or 'vs code' in app_lower or 'vscode' in app_lower: return 'VS Code'
     if 'chatgpt' in app_lower:         return 'ChatGPT'
@@ -347,96 +347,6 @@ def api_goal_diff():
         "diff": diff,
         "goals": goals,
         "actual": actual_usage
-    })
-
-@app.route("/api/insights")
-def api_insights():
-    date_query = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
-    logs = get_logs()
-    
-    insights = []
-    
-    # Calculate total focus time
-    total_focus_sec = 0
-    for r in logs:
-        if r["date"] == date_query:
-            total_focus_sec += r["sec"]
-    
-    insights.append({
-        "type": "focus_time",
-        "title": "集中時間",
-        "value": formatSec(total_focus_sec)
-    })
-    
-    # Find longest focus session
-    max_focus_sec = 0
-    max_focus_start = ""
-    max_focus_end = ""
-    
-    current_session = None
-    for r in logs:
-        if r["date"] == date_query:
-            if current_session and current_session["app"] == r["app"]:
-                current_session["duration"] += r["sec"]
-                current_session["end"] = r["end"]
-            else:
-                if current_session:
-                    if current_session["duration"] > max_focus_sec:
-                        max_focus_sec = current_session["duration"]
-                        max_focus_start = current_session["start"]
-                        max_focus_end = current_session["end"]
-                current_session = {"app": r["app"], "duration": r["sec"], "start": r["start"], "end": r["end"]}
-    
-    if current_session and current_session["duration"] > max_focus_sec:
-        max_focus_sec = current_session["duration"]
-        max_focus_start = current_session["start"]
-        max_focus_end = current_session["end"]
-    
-    insights.append({
-        "type": "longest_focus",
-        "title": "最長集中",
-        "value": f"{max_focus_start}〜{max_focus_end} ({formatSec(max_focus_sec)})"
-    })
-    
-    # Count transitions from browser to YouTube
-    browser_to_youtube = 0
-    for i in range(len(logs) - 1):
-        if logs[i]["date"] == date_query and logs[i+1]["date"] == date_query:
-            from_app = logs[i]["app"].lower()
-            to_app = logs[i+1]["app"].lower()
-            if "chrome" in from_app or "browser" in from_app or "edge" in from_app:
-                if "youtube" in to_app:
-                    browser_to_youtube += 1
-    
-    if browser_to_youtube > 0:
-        insights.append({
-            "type": "transition",
-            "title": "ブラウザからYouTubeへの移動",
-            "value": f"{browser_to_youtube}回"
-        })
-    
-    # Calculate collapse points by source
-    collapse_sources = {}
-    for i in range(len(logs) - 1):
-        if logs[i]["date"] == date_query and logs[i+1]["date"] == date_query:
-            if logs[i]["sec"] >= 300 and logs[i]["app"] != logs[i+1]["app"]:
-                from_app = logs[i]["app"].lower()
-                if "browser" in from_app or "chrome" in from_app or "edge" in from_app:
-                    collapse_sources["browser"] = collapse_sources.get("browser", 0) + 1
-                else:
-                    collapse_sources[logs[i]["app"]] = collapse_sources.get(logs[i]["app"], 0) + 1
-    
-    total_collapses = sum(collapse_sources.values())
-    if total_collapses > 0:
-        browser_collapse_pct = int((collapse_sources.get("browser", 0) / total_collapses) * 100)
-        insights.append({
-            "type": "collapse_source",
-            "title": "集中崩壊の発生源",
-            "value": f"ブラウザ経由: {browser_collapse_pct}%"
-        })
-    
-    return jsonify({
-        "insights": insights
     })
 
 @app.route("/api/habits")

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja" data-use-static-api="true">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Action Tracker Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <span class="logo-icon">🚀</span>
+            <div class="logo-text">
+                <span class="logo-name">ActionTracker</span>
+                <span class="logo-version">v1.0.2</span>
+            </div>
+        </div>
+        <nav>
+            <a href="#" class="nav-item active" data-view="home">🏠 Home</a>
+            <a href="#" class="nav-item" data-view="app">💻 App Transitions</a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="#" class="support-link">❓ Support</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-title">
+                <h1>Today's Activity Summary</h1>
+            </div>
+        </header>
+
+        <!-- Home View -->
+        <div id="view-home" class="view-section active">
+            <!-- Live Tracking Section -->
+            <div class="live-tracking-section glass">
+                <div class="live-header">
+                    <span class="live-badge">LIVE TRACKING</span>
+                    <div class="live-app-info">
+                        <h2 id="live-app-name">VS Code</h2>
+                        <p id="live-app-status">現在 <span id="live-duration-context">17分</span>継続中</p>
+                        <p class="live-context">今日<span id="live-today-count">3</span>回目 | 平均継続時間: <span
+                                id="live-avg-duration">8分</span></p>
+                    </div>
+                </div>
+                <div class="live-details">
+                    <div class="live-metric">
+                        <span class="metric-label">Duration</span>
+                        <span id="live-duration" class="metric-value">45m 12s</span>
+                    </div>
+                    <div class="live-metric">
+                        <span class="metric-label">Previous</span>
+                        <span id="live-previous" class="metric-value">Google Chrome</span>
+                    </div>
+                    <div class="session-progress">
+                        <div class="progress-circle">
+                            <svg viewBox="0 0 36 36">
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3" />
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="75, 100"
+                                    class="progress-ring" />
+                            </svg>
+                            <span class="progress-text" id="session-percent">75%</span>
+                        </div>
+                        <span class="progress-label">SESSION</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Hour Timeline -->
+            <div class="current-hour-timeline glass">
+                <div class="timeline-header">
+                    <h3 id="current-hour-title">現在の時間帯</h3>
+                    <p class="timeline-subtitle" id="current-hour-range">14:00 ───────────── 15:00</p>
+                </div>
+                <div id="current-hour-viz" class="current-hour-viz"></div>
+            </div>
+
+            <!-- Previous Hour Timeline -->
+            <div class="previous-hour-timeline glass">
+                <div class="timeline-header">
+                    <h3 id="previous-hour-title">前の時間帯</h3>
+                    <p class="timeline-subtitle" id="previous-hour-range">13:00 ───────────── 14:00</p>
+                </div>
+                <div id="previous-hour-viz" class="previous-hour-viz"></div>
+            </div>
+
+            <!-- Your Habits -->
+            <div class="your-habits glass">
+                <div class="section-header">
+                    <h3>あなたの癖図鑑</h3>
+                </div>
+                <div id="habits-list" class="habits-list"></div>
+            </div>
+
+            <!-- Trends -->
+            <div class="trends glass">
+                <div class="section-header">
+                    <h3>傾向</h3>
+                </div>
+                <div class="trends-controls">
+                    <button class="trend-period-btn active" data-period="today">今日</button>
+                    <button class="trend-period-btn" data-period="7days">7日</button>
+                    <button class="trend-period-btn" data-period="30days">30日</button>
+                    <button class="trend-period-btn" data-period="all">全部</button>
+                </div>
+                <div id="trends-content" class="trends-content"></div>
+            </div>
+
+            <!-- View Details Button -->
+            <div class="view-details-section glass">
+                <button id="view-details-btn" class="replay-btn">詳細を表示</button>
+            </div>
+        </div>
+
+        <!-- Details View -->
+        <div id="view-app" class="view-section">
+            <header>
+                <h1>詳細分析</h1>
+            </header>
+
+            <!-- Full Timeline -->
+            <div class="timeline-section glass">
+                <div class="timeline-header">
+                    <h3>今日の流れ</h3>
+                    <p class="timeline-subtitle">1時間ごとの行動タイムライン</p>
+                </div>
+                <div id="full-timeline-viz" class="full-timeline-viz"></div>
+            </div>
+
+            <!-- Behavior Replay -->
+            <div class="behavior-replay glass">
+                <div class="section-header">
+                    <h3>行動再生</h3>
+                    <button id="replay-btn" class="replay-btn">▶ 再生</button>
+                </div>
+                <div id="replay-container" class="replay-container">
+                    <div class="replay-placeholder">
+                        <span class="replay-icon">🎬</span>
+                        <p>今日の行動を映画のように再生</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Time-based Transition Patterns -->
+            <div class="time-transitions glass">
+                <div class="section-header">
+                    <h3>⏰ 時間帯別パターン</h3>
+                </div>
+                <div id="time-transitions-list" class="time-transitions-list"></div>
+            </div>
+
+            <!-- Recent Transitions -->
+            <div class="recent-transitions glass">
+                <div class="section-header">
+                    <h3>よくあるパターン</h3>
+                </div>
+                <div id="recent-transitions-list" class="transitions-list"></div>
+            </div>
+
+            <!-- Time Analysis -->
+            <div class="time-analysis glass">
+                <div class="section-header">
+                    <h3>時間帯分析</h3>
+                </div>
+                <div id="time-analysis-list" class="time-analysis-list"></div>
+            </div>
+
+            <!-- App History -->
+            <div class="app-history glass">
+                <div class="section-header">
+                    <h3>アプリ履歴</h3>
+                </div>
+                <div id="app-history-list" class="app-history-list"></div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/main.js"></script>
+</body>
+
+</html>

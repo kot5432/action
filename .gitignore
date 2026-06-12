@@ -1,0 +1,18 @@
+# Application data
+data/
+
+# Build outputs
+frontend/public/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/

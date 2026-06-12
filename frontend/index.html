@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Action Tracker Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <span class="logo-icon">🚀</span>
+            <div class="logo-text">
+                <span class="logo-name">ActionTracker</span>
+                <span class="logo-version">v1.1.0</span>
+            </div>
+        </div>
+        <nav>
+            <a href="#" class="nav-item active" data-view="home">🏠 Home</a>
+            <a href="#" class="nav-item" data-view="today">📅 Today</a>
+            <a href="#" class="nav-item" data-view="history">📊 History</a>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <header class="main-header">
+            <div class="header-title">
+                <h1 id="page-title">Home</h1>
+                <p id="page-subtitle" class="page-subtitle">今どうなっているか</p>
+            </div>
+        </header>
+
+        <!-- ① Home -->
+        <div id="view-home" class="view-section active">
+            <div class="live-tracking-section glass">
+                <div class="live-header">
+                    <span class="live-badge">LIVE TRACKING</span>
+                    <div class="live-app-info">
+                        <h2 id="live-app-name">-</h2>
+                        <p id="live-app-status">現在 <span id="live-duration-context">-</span>継続中</p>
+                        <p class="live-context">今日<span id="live-today-count">0</span>回目 | 平均継続時間: <span
+                                id="live-avg-duration">-</span></p>
+                    </div>
+                </div>
+                <div class="live-details">
+                    <div class="live-metric">
+                        <span class="metric-label">Duration</span>
+                        <span id="live-duration" class="metric-value">-</span>
+                    </div>
+                    <div class="live-metric">
+                        <span class="metric-label">Previous</span>
+                        <span id="live-previous" class="metric-value">-</span>
+                    </div>
+                    <div class="session-progress">
+                        <div class="progress-circle">
+                            <svg viewBox="0 0 36 36">
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3" />
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="75, 100"
+                                    class="progress-ring" />
+                            </svg>
+                            <span class="progress-text" id="session-percent">0%</span>
+                        </div>
+                        <span class="progress-label">SESSION</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="current-hour-timeline glass">
+                <div class="timeline-header">
+                    <h3 id="current-hour-title">現在の時間帯</h3>
+                    <p class="timeline-subtitle" id="current-hour-range">-</p>
+                </div>
+                <div id="current-hour-viz" class="current-hour-viz"></div>
+            </div>
+
+            <div class="previous-hour-timeline glass">
+                <div class="timeline-header">
+                    <h3 id="previous-hour-title">前の時間帯</h3>
+                    <p class="timeline-subtitle" id="previous-hour-range">-</p>
+                </div>
+                <div id="previous-hour-viz" class="previous-hour-viz"></div>
+            </div>
+
+            <div class="your-habits glass">
+                <div class="section-header">
+                    <h3>あなたの癖図鑑</h3>
+                </div>
+                <div id="habits-list" class="habits-list"></div>
+            </div>
+
+            <div class="trends glass">
+                <div class="section-header">
+                    <h3>今日の傾向</h3>
+                </div>
+                <div class="trends-controls">
+                    <button class="trend-period-btn active" data-period="today">今日</button>
+                    <button class="trend-period-btn" data-period="7days">7日</button>
+                    <button class="trend-period-btn" data-period="30days">30日</button>
+                    <button class="trend-period-btn" data-period="all">全部</button>
+                </div>
+                <div id="trends-content" class="trends-content"></div>
+            </div>
+        </div>
+
+        <!-- ② Today -->
+        <div id="view-today" class="view-section">
+            <div class="timeline-section glass">
+                <div class="timeline-header">
+                    <h3>今日の流れ</h3>
+                    <p class="timeline-subtitle">1日の行動タイムライン</p>
+                </div>
+                <div id="today-timeline-viz" class="full-timeline-viz"></div>
+            </div>
+
+            <div class="behavior-replay glass">
+                <div class="section-header">
+                    <h3>行動再生</h3>
+                    <button id="today-replay-btn" class="replay-btn" type="button">▶ 再生</button>
+                </div>
+                <div id="today-replay-container" class="replay-container">
+                    <div class="replay-placeholder">
+                        <span class="replay-icon">🎬</span>
+                        <p>今日の行動を映画のように再生</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-transitions glass">
+                <div class="section-header">
+                    <h3>よくある遷移</h3>
+                </div>
+                <div id="today-transitions-list" class="transitions-list"></div>
+            </div>
+
+            <div class="time-analysis glass">
+                <div class="section-header">
+                    <h3>時間帯分析</h3>
+                </div>
+                <div id="today-time-analysis-list" class="time-analysis-list"></div>
+            </div>
+        </div>
+
+        <!-- ③ History -->
+        <div id="view-history" class="view-section">
+            <div class="history-calendar glass">
+                <div class="calendar-header">
+                    <button type="button" id="cal-prev" class="cal-nav-btn" aria-label="前月">‹</button>
+                    <h3 id="cal-title">2025年8月</h3>
+                    <button type="button" id="cal-next" class="cal-nav-btn" aria-label="翌月">›</button>
+                </div>
+                <div class="calendar-weekdays">
+                    <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+                </div>
+                <div id="calendar-grid" class="calendar-grid"></div>
+            </div>
+
+            <div class="history-date-picks glass">
+                <div class="section-header">
+                    <h3>日付選択</h3>
+                </div>
+                <div class="date-pick-row">
+                    <button type="button" class="date-pick-btn active" data-pick="today">今日</button>
+                    <button type="button" class="date-pick-btn" data-pick="yesterday">昨日</button>
+                    <button type="button" class="date-pick-btn" data-pick="last7">過去7日</button>
+                    <button type="button" class="date-pick-btn" data-pick="last30">過去30日</button>
+                    <input type="date" id="history-custom-date" class="history-custom-date" title="カスタム日付">
+                </div>
+                <p id="history-selected-label" class="history-selected-label">選択中: 今日</p>
+            </div>
+
+            <div class="history-compare glass">
+                <div class="section-header">
+                    <h3>比較</h3>
+                </div>
+                <div id="history-compare-cards" class="compare-cards"></div>
+            </div>
+
+            <div class="history-habits-compare glass">
+                <div class="section-header">
+                    <h3>癖の変化</h3>
+                </div>
+                <div id="history-habits-compare-list" class="habits-compare-list"></div>
+            </div>
+
+            <div class="history-drift glass">
+                <div class="section-header">
+                    <h3>行動パターン履歴</h3>
+                </div>
+                <div class="drift-period-controls">
+                    <button type="button" class="drift-period-btn active" data-period="today">今日</button>
+                    <button type="button" class="drift-period-btn" data-period="7days">7日</button>
+                    <button type="button" class="drift-period-btn" data-period="30days">30日</button>
+                    <button type="button" class="drift-period-btn" data-period="all">全部</button>
+                </div>
+                <div id="history-drift-list" class="drift-patterns-list"></div>
+            </div>
+
+            <div class="history-time-analysis glass">
+                <div class="section-header">
+                    <h3>時間帯分析</h3>
+                </div>
+                <div id="history-time-analysis-list" class="time-analysis-list"></div>
+            </div>
+
+            <div class="timeline-section glass">
+                <div class="timeline-header">
+                    <h3 id="history-day-flow-title">その日の流れ</h3>
+                    <p class="timeline-subtitle" id="history-day-flow-subtitle">-</p>
+                </div>
+                <div id="history-day-log-list" class="day-log-list"></div>
+                <div id="history-timeline-viz" class="full-timeline-viz"></div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>

@@ -43,7 +43,6 @@ def main():
     for period in ("today", "7days", "30days", "all"):
         write_json(client, f"/api/trends?period={period}", f"trends-{period}.json")
 
-    write_json(client, "/api/history/habits-compare", "history-habits-compare.json")
     for period in ("today", "7days", "30days", "all"):
         write_json(client, f"/api/history/drift-patterns?period={period}", f"history-drift-{period}.json")
 
@@ -51,7 +50,6 @@ def main():
         write_json(client, f"/api/timeline?date={date}", f"timeline-{date}.json")
         write_json(client, f"/api/transitions?date={date}", f"transitions-{date}.json")
         write_json(client, f"/api/time-analysis?date={date}", f"time-analysis-{date}.json")
-        write_json(client, f"/api/habits?date={date}", f"habits-{date}.json")
         write_json(client, f"/api/history/compare?date={date}", f"history-compare-{date}.json")
 
     today = datetime.now()
@@ -75,7 +73,6 @@ def main():
                 (f"timeline-{today_str}.json", "timeline.json"),
                 (f"transitions-{today_str}.json", "transitions.json"),
                 (f"time-analysis-{today_str}.json", "time-analysis.json"),
-                (f"habits-{today_str}.json", "habits.json"),
             ]:
                 s = os.path.join(DATA, src)
                 d = os.path.join(DATA, dst)

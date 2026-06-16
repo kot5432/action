@@ -1,0 +1,313 @@
+● ActionTracker DB設計書（MVP版） 
+● 1. DB設計方針 
+● ActionTrackerでは、生ログを保存する events テーブルを中心とした構成を採用する。 
+● 分析用データは生ログから生成し、表示速度向上のために sessions および 
+transitions テーブルへ集約する。 
+● MVPではテーブル数を最小限に抑え、将来的なAI分析やクラウド同期に対応可能な構
+造とする。 
+● 2. ER図 
+● events 
+●   │ 
+●   ├── sessions 
+●   │ 
+●   └── transitions 
+●  
+● category_rules 
+●  
+● 3. テーブル定義 
+● events 
+● 概要 
+● 生ログ保存テーブル。 
+● ActionTrackerにおいて最も重要なテーブル。 
+● ウィンドウ変更やアイドル状態など、発生したイベントをそのまま保存する。 
+● CREATE TABLE 
+● CREATE TABLE events ( 
+●     id INTEGER PRIMARY KEY AUTOINCREMENT, 
+●  
+●     timestamp DATETIME NOT NULL, 
+●  
+●     event_type TEXT NOT NULL, 
+●  
+●     app_name TEXT, 
+●  
+●     service TEXT, 
+●  
+●     category TEXT, 
+●  
+●     window_title TEXT, 
+●  
+●     metadata TEXT 
+● ); 
+●  
+● カラム説明 
+カラム名 
+id 
+型 
+INTEG
+ER 
+timestamp 
+event_type 
+app_name 
+service 
+category 
+window_titl
+e 
+metadata 
+DATETI
+ME 
+TEXT 
+TEXT 
+TEXT 
+TEXT 
+TEXT 
+TEXT 
+説明 
+ID 
+発生時刻 
+イベント種別 
+実行ファイル名 
+サービス名 
+分類カテゴリ 
+ウィンドウタイトル 
+追加情報(JSON) 
+● event_type 
+● window_changed 
+● mouse_active 
+● keyboard_active 
+● idle_start 
+● idle_end 
+●  
+● サンプル 
+● { 
+●   "id": 1, 
+●   "timestamp": "2026-06-16T14:20:01", 
+●   "event_type": "window_changed", 
+●   "app_name": "msedge.exe", 
+●   "service": "YouTube", 
+●   "category": "学習", 
+●   "window_title": "YouTube - Microsoft Edge" 
+● } 
+●  
+● sessions 
+● 概要 
+● 集計用テーブル。 
+● 連続利用時間をセッション単位で保存する。 
+● タイムラインや利用時間集計に使用する。 
+● CREATE TABLE 
+● CREATE TABLE sessions ( 
+●     id INTEGER PRIMARY KEY AUTOINCREMENT, 
+●  
+●     start_time DATETIME NOT NULL, 
+●  
+●     end_time DATETIME NOT NULL, 
+●  
+●     duration_seconds INTEGER, 
+●  
+●     app_name TEXT, 
+●  
+●     service TEXT, 
+●  
+●     category TEXT 
+● ); 
+●  
+● カラム説明 
+カラム名 
+id 
+start_time 
+end_time 
+duration_second
+s 
+app_name 
+service 
+category 
+● サンプル 
+● { 
+型 
+INTEG
+ER 
+DATETI
+ME 
+DATETI
+ME 
+INTEG
+ER 
+TEXT 
+TEXT 
+TEXT 
+説明 
+ID 
+開始時
+刻 
+終了時
+刻 
+利用秒
+数 
+アプリ名 
+サービス
+名 
+カテゴリ 
+●   "app_name":"msedge.exe", 
+●   "service":"YouTube", 
+●   "category":"学習", 
+●   "duration_seconds":1800 
+● } 
+●  
+● transitions 
+● 概要 
+● サービス遷移分析用テーブル。 
+● ユーザーがどのサービスからどのサービスへ移動したかを保存する。 
+● インサイト生成や行動ストーリー生成に利用する。 
+● CREATE TABLE 
+● CREATE TABLE transitions ( 
+●     id INTEGER PRIMARY KEY AUTOINCREMENT, 
+●  
+●     timestamp DATETIME, 
+●  
+●     from_service TEXT, 
+●  
+●     to_service TEXT, 
+●  
+●     from_category TEXT, 
+●  
+●     to_category TEXT 
+● ); 
+● カラム説明 
+カラム名 
+id 
+timestamp 
+型 
+INTEG
+ER 
+DATETI
+ME 
+説明 
+ID 
+発生時刻 
+from_service 
+to_service 
+from_catego
+ry 
+to_category 
+● サンプル 
+● { 
+TEXT 
+TEXT 
+TEXT 
+TEXT 
+遷移元サービ
+ス 
+遷移先サービ
+ス 
+遷移元カテゴ
+リ 
+遷移先カテゴ
+リ 
+●   "timestamp":"2026-06-16T14:25:00", 
+●   "from_service":"GitHub", 
+●   "to_service":"YouTube", 
+●   "from_category":"開発", 
+●   "to_category":"学習" 
+● } 
+●  
+● category_rules 
+● 概要 
+● サービスをカテゴリへ分類するためのルールテーブル。 
+● サービス正規化後の分類処理に利用する。 
+● CREATE TABLE 
+● CREATE TABLE category_rules ( 
+●     id INTEGER PRIMARY KEY AUTOINCREMENT, 
+●  
+●     service TEXT, 
+●  
+●     category TEXT 
+● ); 
+● カラム説明 
+カラム
+名 
+id 
+servic
+e 
+categ
+or
+y 
+● サンプル 
+service 
+GitHub 
+VS Code 
+ChatGPT 
+型 
+INTE
+G
+TEXT 
+TEXT 
+説明 
+ID 
+E
+R 
+サービス
+名 
+カテゴリ
+名 
+category 
+開発 
+開発 
+学習 
+YouTube 
+X 
+Discord 
+娯楽 
+SNS 
+コミュニケーション 
+● 4. インデックス設計 
+● events 
+● CREATE INDEX idx_events_timestamp 
+● ON events(timestamp); 
+● CREATE INDEX idx_events_service 
+● ON events(service); 
+● CREATE INDEX idx_events_category 
+● ON events(category); 
+● sessions 
+● CREATE INDEX idx_sessions_start_time 
+● ON sessions(start_time); 
+● CREATE INDEX idx_sessions_service 
+● ON sessions(service); 
+● transitions 
+● CREATE INDEX idx_transitions_timestamp 
+● ON transitions(timestamp); 
+● CREATE INDEX idx_transitions_services 
+● ON transitions(from_service, to_service); 
+● 5. データ保持方針 
+● events 
+● 保持期間 
+● 無期限 
+● 生ログとして保存する。 
+● sessions 
+● 保持期間 
+● 無期限 
+● 分析用データとして保持する。 
+● transitions 
+● 保持期間 
+● 無期限 
+● 行動分析に利用する。 
+● category_rules 
+● 保持期間 
+● 無期限 
+● ユーザーによる編集を許可する。 
+● 6. 将来拡張 
+● V2 
+● 追加予定 
+● focus_score 
+● daily_summary 
+● V3 
+● 追加予定 
+● mobile_events 
+● mobile_sessions 
+●  
+● Android・iOS連携用 
+● V4 
+● 追加予定 
+● ai_insights 
+● behavior_patterns 
+●  
+● AIによる行動分析用 
+●  

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional
 import sqlite3
 import os
 
@@ -9,9 +9,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 DATA_DIR = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "action_tracker.db")
 
-app = FastAPI(title="ActionTracker API", version="1.0.0")
+app = FastAPI(title="ActionTracker API", version="2.0.0")
 
-# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,238 +19,226 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# プライバシーモード設定
-PRIVACY_MODE = True
 
-def get_db_connection():
+def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-def mask_sensitive_data(domain: Optional[str], window_title: Optional[str]) -> tuple:
-    """
-    プライバシーモード: 機密データをマスク
-    """
-    if not PRIVACY_MODE:
-        return domain, window_title
-    
-    # プライバシーモード対象ドメイン
-    privacy_domains = [
-        'bank', 'securities', 'finance', 'password', 'vault',
-        '1password', 'bitwarden', 'lastpass'
-    ]
-    
-    if domain:
-        domain_lower = domain.lower()
-        for privacy_domain in privacy_domains:
-            if privacy_domain in domain_lower:
-                return None, '***'
-    
-    return domain, window_title
+
+def _mask(service: Optional[str]) -> Optional[str]:
+    """プライバシーモード: 機密サービスをマスクする"""
+    if not service:
+        return None
+    try:
+        from backend.core.service_resolver import should_mask
+        return None if should_mask(service) else service
+    except Exception:
+        return service
+
+
+# ─────────────────────────────────────────────
+# エンドポイント
+# ─────────────────────────────────────────────
 
 @app.get("/")
-def read_root():
-    return {"message": "ActionTracker API", "version": "1.0.0"}
+def root():
+    return {"message": "ActionTracker API", "version": "2.0.0"}
+
 
 @app.get("/dashboard")
 def get_dashboard():
     """
     現在状態取得
-    Response: {current_app, current_domain, session_start_time, session_duration_minutes, today_usage_minutes, switch_count}
+    Response: {current_app, current_service, current_category,
+               session_start_time, session_duration_minutes,
+               today_usage_minutes, switch_count}
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # 最新のセッションを取得
-    cursor.execute('''
-        SELECT 
-            app_name,
-            domain,
-            start_time,
-            duration_seconds
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT app_name, service, category, start_time, duration_seconds
         FROM sessions
-        ORDER BY start_time DESC
-        LIMIT 1
+        ORDER BY start_time DESC LIMIT 1
     ''')
-    latest_session = cursor.fetchone()
-    
-    # 今日の合計使用時間
+    latest = cur.fetchone()
+
     today = datetime.now().strftime("%Y-%m-%d")
-    cursor.execute('''
-        SELECT SUM(duration_seconds) as total_seconds
-        FROM sessions
-        WHERE DATE(start_time) = ?
+
+    cur.execute('''
+        SELECT COALESCE(SUM(duration_seconds), 0) as total
+        FROM sessions WHERE DATE(start_time) = ?
     ''', (today,))
-    total_seconds = cursor.fetchone()['total_seconds'] or 0
-    
-    # 今日の切替回数
-    cursor.execute('''
-        SELECT COUNT(*) as count
-        FROM transitions
-        WHERE DATE(timestamp) = ?
+    total_sec = cur.fetchone()['total']
+
+    cur.execute('''
+        SELECT COUNT(*) as cnt FROM transitions WHERE DATE(timestamp) = ?
     ''', (today,))
-    switch_count = cursor.fetchone()['count'] or 0
-    
+    switch_count = cur.fetchone()['cnt']
+
     conn.close()
-    
-    # プライバシーモードを適用
-    current_app = latest_session['app_name'] if latest_session else "-"
-    current_domain = latest_session['domain'] if latest_session else None
-    masked_domain, _ = mask_sensitive_data(current_domain, None)
-    
-    # セッション情報
-    session_start_time = None
-    session_duration_minutes = 0
-    if latest_session:
-        session_start_time = latest_session['start_time'].strftime("%H:%M:%S")
-        session_duration_minutes = int(latest_session['duration_seconds'] / 60)
-    
+
+    service = _mask(latest['service'] if latest else None)
+    session_start = None
+    session_min = 0
+    if latest:
+        try:
+            session_start = str(latest['start_time'])[-8:]  # HH:MM:SS
+        except Exception:
+            pass
+        session_min = int((latest['duration_seconds'] or 0) / 60)
+
     return {
-        "current_app": current_app,
-        "current_domain": masked_domain,
-        "session_start_time": session_start_time,
-        "session_duration_minutes": session_duration_minutes,
-        "today_usage_minutes": int(total_seconds / 60),
-        "switch_count": switch_count
+        "current_app":              latest['app_name'] if latest else "—",
+        "current_service":          service,
+        "current_category":         latest['category'] if latest else None,
+        "session_start_time":       session_start,
+        "session_duration_minutes": session_min,
+        "today_usage_minutes":      int(total_sec / 60),
+        "switch_count":             switch_count,
     }
 
+
 @app.get("/timeline")
-def get_timeline(date: Optional[str] = Query(default=datetime.now().strftime("%Y-%m-%d"))):
+def get_timeline(date: Optional[str] = Query(default=None)):
     """
     タイムライン表示
-    Query: ?date=2026-06-16
-    Response: [{start, end, app, domain}]
+    Response: [{start, end, app, service, category, duration_seconds}]
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT 
-            TIME(start_time) as start,
-            TIME(end_time) as end,
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT
+            TIME(start_time)  as start,
+            TIME(end_time)    as end,
             app_name,
-            domain,
+            service,
+            category,
             duration_seconds
         FROM sessions
         WHERE DATE(start_time) = ?
         ORDER BY start_time
     ''', (date,))
-    
-    timeline = []
-    for row in cursor.fetchall():
-        masked_domain, _ = mask_sensitive_data(row['domain'], None)
-        timeline.append({
-            "start": row['start'],
-            "end": row['end'],
-            "app": row['app_name'],
-            "domain": masked_domain,
-            "duration_seconds": row['duration_seconds']
+
+    result = []
+    for row in cur.fetchall():
+        result.append({
+            "start":            row['start'],
+            "end":              row['end'],
+            "app":              row['app_name'],
+            "service":          _mask(row['service']),
+            "category":         row['category'],
+            "duration_seconds": row['duration_seconds'],
         })
-    
     conn.close()
-    return timeline
+    return result
+
 
 @app.get("/transitions")
 def get_transitions(date: Optional[str] = Query(default=None)):
     """
-    アプリ遷移分析
-    Response: [{from, to, count}]
+    サービス遷移分析
+    Response: [{from, to, from_category, to_category, count}]
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    conn = get_db()
+    cur = conn.cursor()
+
     if date:
-        cursor.execute('''
-            SELECT 
-                from_app,
-                from_domain,
-                to_app,
-                to_domain,
-                COUNT(*) as count
+        cur.execute('''
+            SELECT from_service, to_service, from_category, to_category,
+                   COUNT(*) as count
             FROM transitions
             WHERE DATE(timestamp) = ?
-            GROUP BY from_app, to_app
+            GROUP BY from_service, to_service
             ORDER BY count DESC
         ''', (date,))
     else:
-        cursor.execute('''
-            SELECT 
-                from_app,
-                from_domain,
-                to_app,
-                to_domain,
-                COUNT(*) as count
+        cur.execute('''
+            SELECT from_service, to_service, from_category, to_category,
+                   COUNT(*) as count
             FROM transitions
-            GROUP BY from_app, to_app
+            GROUP BY from_service, to_service
             ORDER BY count DESC
         ''')
-    
-    transitions = []
-    for row in cursor.fetchall():
-        transitions.append({
-            "from": row['from_domain'] or row['from_app'],
-            "to": row['to_domain'] or row['to_app'],
-            "count": row['count']
+
+    result = []
+    for row in cur.fetchall():
+        result.append({
+            "from":          row['from_service'] or "—",
+            "to":            row['to_service'] or "—",
+            "from_category": row['from_category'],
+            "to_category":   row['to_category'],
+            "count":         row['count'],
         })
-    
     conn.close()
-    return transitions
+    return result
+
 
 @app.get("/story")
-def get_story(date: Optional[str] = Query(default=datetime.now().strftime("%Y-%m-%d"))):
+def get_story(date: Optional[str] = Query(default=None)):
     """
     行動ストーリー生成
-    Query: ?date=2026-06-16
-    Response: {story: [{time, text}], total_drift_minutes}
+    Response: {story: [{time, text, service, category}], total_drift_minutes}
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT 
-            TIME(start_time) as time,
-            app_name,
-            domain,
-            duration_seconds
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT TIME(start_time) as time, app_name, service, category, duration_seconds
         FROM sessions
         WHERE DATE(start_time) = ?
         ORDER BY start_time
     ''', (date,))
-    
+
     story = []
     total_drift_minutes = 0
-    distraction_domains = ['youtube.com', 'twitter.com', 'x.com', 'facebook.com', 'instagram.com', 'tiktok.com']
-    
-    for row in cursor.fetchall():
-        masked_domain, _ = mask_sensitive_data(row['domain'], None)
-        app_display = masked_domain if masked_domain else row['app_name']
-        duration_min = int(row['duration_seconds'] / 60)
-        
-        # 脱線判定
-        if masked_domain:
-            for d_domain in distraction_domains:
-                if d_domain in masked_domain.lower():
-                    total_drift_minutes += duration_min
-                    break
-        
-        # テキスト生成
-        if duration_min < 1:
-            text = f"{app_display}を利用"
-        elif duration_min < 5:
-            text = f"{app_display}で作業（{duration_min}分）"
-        else:
-            text = f"{app_display}で作業（{duration_min}分）"
-        
+
+    try:
+        from backend.core.service_resolver import is_distraction
+    except Exception:
+        def is_distraction(cat): return cat in ("娯楽", "SNS")
+
+    for row in cur.fetchall():
+        service  = _mask(row['service']) or row['app_name'] or "不明"
+        category = row['category'] or "その他"
+        dur_min  = int((row['duration_seconds'] or 0) / 60)
+
+        if is_distraction(category):
+            total_drift_minutes += dur_min
+
+        # ストーリーテキスト生成
+        text = _story_text(service, category, dur_min)
+
         story.append({
-            "time": row['time'],
-            "text": text
+            "time":     row['time'],
+            "text":     text,
+            "service":  service,
+            "category": category,
         })
-    
+
     conn.close()
-    return {
-        "story": story,
-        "total_drift_minutes": total_drift_minutes
+    return {"story": story, "total_drift_minutes": total_drift_minutes}
+
+
+def _story_text(service: str, category: str, dur_min: int) -> str:
+    """サービス名 + カテゴリからストーリー文を生成する"""
+    dur_str = f"（{dur_min}分）" if dur_min >= 1 else ""
+
+    templates: dict[str, str] = {
+        "開発":           f"{service}で開発作業{dur_str}",
+        "学習":           f"{service}で調査・学習{dur_str}",
+        "娯楽":           f"{service}で動画閲覧{dur_str}",
+        "SNS":            f"{service}を閲覧{dur_str}",
+        "コミュニケーション": f"{service}でコミュニケーション{dur_str}",
     }
+    return templates.get(category, f"{service}を利用{dur_str}")
+
 
 @app.get("/insights")
 def get_insights():
@@ -259,97 +246,93 @@ def get_insights():
     インサイト生成
     Response: [{type, message}]
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    conn = get_db()
+    cur = conn.cursor()
     insights = []
-    
+
     # 頻出遷移パターン
-    cursor.execute('''
-        SELECT from_domain, to_domain, COUNT(*) as count
+    cur.execute('''
+        SELECT from_service, to_service, from_category, to_category,
+               COUNT(*) as count
         FROM transitions
-        WHERE from_domain IS NOT NULL AND to_domain IS NOT NULL
-        GROUP BY from_domain, to_domain
-        ORDER BY count DESC
-        LIMIT 5
+        WHERE from_service IS NOT NULL AND to_service IS NOT NULL
+        GROUP BY from_service, to_service
+        ORDER BY count DESC LIMIT 5
     ''')
-    
-    top_transitions = cursor.fetchall()
-    if top_transitions:
-        top = top_transitions[0]
+    top_trans = cur.fetchall()
+    if top_trans:
+        t = top_trans[0]
         insights.append({
-            "type": "pattern",
-            "message": f"{top['from_domain']}から{top['to_domain']}への遷移が最も多い（{top['count']}回）"
+            "type":    "pattern",
+            "message": f"{t['from_service']}から{t['to_service']}への遷移が最も多い（{t['count']}回）",
         })
-    
-    # 時間帯別の傾向
-    cursor.execute('''
-        SELECT 
-            CAST(strftime('%H', start_time) AS INTEGER) as hour,
-            SUM(duration_seconds) as total_seconds
-        FROM sessions
-        GROUP BY hour
-        ORDER BY total_seconds DESC
-        LIMIT 1
+        # 脱線パターンを探す
+        for row in top_trans:
+            if row['to_category'] in ("娯楽", "SNS"):
+                insights.append({
+                    "type":    "distraction",
+                    "message": f"{row['from_category']}作業後に{row['to_service']}へ遷移する傾向があります",
+                })
+                break
+
+    # 時間帯別のピーク
+    cur.execute('''
+        SELECT CAST(strftime('%H', start_time) AS INTEGER) as hour,
+               SUM(duration_seconds) as total
+        FROM sessions GROUP BY hour ORDER BY total DESC LIMIT 1
     ''')
-    
-    peak_hour = cursor.fetchone()
-    if peak_hour:
+    peak = cur.fetchone()
+    if peak:
         insights.append({
-            "type": "time_pattern",
-            "message": f"{peak_hour['hour']}時台に最も集中している"
+            "type":    "time_pattern",
+            "message": f"{peak['hour']}時台に最も多く活動しています",
         })
-    
+
+    # カテゴリ別利用傾向
+    cur.execute('''
+        SELECT category, SUM(duration_seconds) as total
+        FROM sessions WHERE category IS NOT NULL
+        GROUP BY category ORDER BY total DESC LIMIT 1
+    ''')
+    top_cat = cur.fetchone()
+    if top_cat:
+        m = int(top_cat['total'] / 60)
+        insights.append({
+            "type":    "focus",
+            "message": f"最も多いカテゴリは「{top_cat['category']}」（{m}分）",
+        })
+
     # 平均セッション時間
-    cursor.execute('''
-        SELECT AVG(duration_seconds) as avg_duration
-        FROM sessions
-    ''')
-    
-    avg_duration = cursor.fetchone()['avg_duration']
-    if avg_duration:
-        avg_min = int(avg_duration / 60)
+    cur.execute('SELECT AVG(duration_seconds) as avg FROM sessions')
+    avg = cur.fetchone()['avg']
+    if avg:
         insights.append({
-            "type": "focus",
-            "message": f"平均セッション時間は{avg_min}分"
+            "type":    "focus",
+            "message": f"平均セッション時間は{int(avg / 60)}分",
         })
-    
+
     conn.close()
     return insights
+
 
 @app.get("/categories")
 def get_categories():
     """
     行動カテゴリ分析
-    Response: {category: time}
+    Response: {category: "X時間Y分"}
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT cr.category, SUM(s.duration_seconds) as total_seconds
-        FROM sessions s
-        LEFT JOIN category_rules cr ON s.domain = cr.domain
-        WHERE cr.category IS NOT NULL
-        GROUP BY cr.category
-        ORDER BY total_seconds DESC
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT category, SUM(duration_seconds) as total
+        FROM sessions
+        WHERE category IS NOT NULL
+        GROUP BY category ORDER BY total DESC
     ''')
-    
-    categories = {}
-    for row in cursor.fetchall():
-        hours = int(row['total_seconds'] / 3600)
-        minutes = int((row['total_seconds'] % 3600) / 60)
-        
-        if hours > 0:
-            time_str = f"{hours}時間{minutes}分"
-        else:
-            time_str = f"{minutes}分"
-        
-        categories[row['category']] = time_str
-    
+    result = {}
+    for row in cur.fetchall():
+        h = int(row['total'] / 3600)
+        m = int((row['total'] % 3600) / 60)
+        result[row['category']] = f"{h}時間{m}分" if h > 0 else f"{m}分"
     conn.close()
-    return categories
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    return result

@@ -2,7 +2,6 @@ import time
 import sys
 import os
 from datetime import datetime
-from pynput import mouse, keyboard
 from threading import Thread
 import queue
 
@@ -11,202 +10,177 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from backend.tracker.monitor import get_active_app
-from backend.core.database import insert_event
-from backend.core.domain_extractor import extract_domain, mask_sensitive_info
+from backend.core.database import insert_event, insert_session, insert_transition
+from backend.core.service_resolver import resolve_service, should_mask
 
-# プライバシーモード設定
+try:
+    from pynput import mouse, keyboard
+    PYNPUT_AVAILABLE = True
+except ImportError:
+    PYNPUT_AVAILABLE = False
+
+
 PRIVACY_MODE = True
 
-def should_mask_domain(domain):
-    """
-    プライバシーモード対象のドメインか判定
-    """
-    if not PRIVACY_MODE or not domain:
-        return False
-    
-    privacy_domains = [
-        'bank', 'securities', 'finance', 'password', 'vault',
-        '1password', 'bitwarden', 'lastpass'
-    ]
-    
-    domain_lower = domain.lower()
-    for privacy_domain in privacy_domains:
-        if privacy_domain in domain_lower:
-            return True
-    
-    return False
 
 class EventTracker:
-    def __init__(self, idle_threshold=300):  # 5分でアイドル判定
+    def __init__(self, idle_threshold=300):
         self.idle_threshold = idle_threshold
         self.last_activity_time = time.time()
         self.is_idle = False
         self.event_queue = queue.Queue()
+
+        # 現在のセッション情報（app_name, service, category, window_title）
         self.current_app = None
+        self.current_service = None
+        self.current_category = None
         self.current_window_title = None
-        self.current_domain = None
         self.session_start_time = None
-        
+
+    # ─── 入力イベント ───────────────────────────────
+    def _activity(self):
+        self.last_activity_time = time.time()
+        if self.is_idle:
+            self.is_idle = False
+            self.event_queue.put(('idle_end', None))
+
     def on_mouse_move(self, x, y):
-        """マウス移動イベント"""
-        self.last_activity_time = time.time()
-        if self.is_idle:
-            self.is_idle = False
-            self.event_queue.put(('idle_end', None))
+        self._activity()
         self.event_queue.put(('mouse_active', None))
-    
+
     def on_mouse_click(self, x, y, button, pressed):
-        """マウスクリックイベント"""
-        self.last_activity_time = time.time()
-        if self.is_idle:
-            self.is_idle = False
-            self.event_queue.put(('idle_end', None))
+        self._activity()
         self.event_queue.put(('mouse_active', None))
-    
+
     def on_key_press(self, key):
-        """キーボード押下イベント"""
-        self.last_activity_time = time.time()
-        if self.is_idle:
-            self.is_idle = False
-            self.event_queue.put(('idle_end', None))
+        self._activity()
         self.event_queue.put(('keyboard_active', None))
-    
+
+    # ─── アイドル監視 ────────────────────────────────
     def check_idle(self):
-        """アイドル状態をチェック"""
         while True:
-            time.sleep(10)  # 10秒ごとにチェック
-            idle_duration = time.time() - self.last_activity_time
-            if idle_duration > self.idle_threshold and not self.is_idle:
+            time.sleep(10)
+            if time.time() - self.last_activity_time > self.idle_threshold and not self.is_idle:
                 self.is_idle = True
                 self.event_queue.put(('idle_start', None))
-    
+
+    # ─── ウィンドウ変更監視 ──────────────────────────
     def check_window_change(self):
-        """ウィンドウ変更をチェック"""
         while True:
-            time.sleep(2)  # 2秒ごとにチェック
-            app_info = get_active_app()
-            
-            # アプリ名とウィンドウタイトルを分離
-            if '[' in app_info:
-                app_name = app_info.split('[')[0].strip()
-                window_title = app_info.split('[')[1].rstrip(']')
+            time.sleep(2)
+            raw = get_active_app()  # "msedge.exe [YouTube - Microsoft Edge]"
+
+            # app_name と window_title を分離
+            if '[' in raw:
+                app_name    = raw.split('[')[0].strip()
+                window_title = raw.split('[', 1)[1].rstrip(']')
             else:
-                app_name = app_info
+                app_name     = raw
                 window_title = None
-            
-            # ドメインを抽出
-            domain = extract_domain(window_title) if window_title else None
-            
-            # プライバシーモード: 機密ドメインをマスク
-            if should_mask_domain(domain):
-                domain = None
+
+            # サービス名とカテゴリを解決
+            service, category = resolve_service(app_name, window_title or "")
+
+            # プライバシーモード: 機密サービスはマスク
+            if PRIVACY_MODE and should_mask(service):
+                service      = None
                 window_title = '***'
-            
-            # ウィンドウが変更された場合
-            if app_name != self.current_app or window_title != self.current_window_title:
-                if self.current_app:
-                    # 前のセッションを記録
-                    if self.session_start_time:
-                        end_time = datetime.now()
-                        duration = int((end_time - self.session_start_time).total_seconds())
-                        from backend.core.database import insert_session
-                        insert_session(
-                            self.session_start_time,
-                            end_time,
-                            duration,
-                            self.current_app,
-                            self.current_domain
-                        )
-                    
-                    # 遷移を記録
-                    if self.current_app and app_name != self.current_app:
-                        from backend.core.database import insert_transition
-                        insert_transition(
-                            datetime.now(),
-                            self.current_app,
-                            self.current_domain,
-                            app_name,
-                            domain
-                        )
-                
-                # 新しいウィンドウ変更イベント
+                category     = "その他"
+
+            # ウィンドウが変わったか (service 単位で判定)
+            changed = (service != self.current_service or app_name != self.current_app)
+
+            if changed:
+                # 前のセッションを記録
+                if self.current_app and self.session_start_time:
+                    end_time = datetime.now()
+                    duration = int((end_time - self.session_start_time).total_seconds())
+                    insert_session(
+                        self.session_start_time, end_time, duration,
+                        self.current_app, self.current_service, self.current_category,
+                    )
+
+                # 遷移を記録 (同一サービスへの戻りは除外)
+                if self.current_service and service and self.current_service != service:
+                    insert_transition(
+                        datetime.now(),
+                        self.current_service, service,
+                        self.current_category, category,
+                    )
+
                 self.event_queue.put(('window_changed', {
-                    'app_name': app_name,
+                    'app_name':     app_name,
+                    'service':      service,
+                    'category':     category,
                     'window_title': window_title,
-                    'domain': domain
                 }))
-                
-                self.current_app = app_name
+
+                self.current_app          = app_name
+                self.current_service      = service
+                self.current_category     = category
                 self.current_window_title = window_title
-                self.current_domain = domain
-                self.session_start_time = datetime.now()
-    
+                self.session_start_time   = datetime.now()
+
+    # ─── イベント処理 ────────────────────────────────
     def process_events(self):
-        """イベントを処理してデータベースに保存"""
         while True:
             try:
-                event_type, event_data = self.event_queue.get(timeout=1)
-                
+                event_type, data = self.event_queue.get(timeout=1)
+                ts = datetime.now().strftime('%H:%M:%S')
+
                 if event_type == 'window_changed':
                     insert_event(
                         event_type,
-                        event_data['app_name'],
-                        event_data['window_title'],
-                        event_data['domain']
+                        data['app_name'],
+                        data['service'],
+                        data['category'],
+                        data['window_title'],
                     )
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Window changed: {event_data['app_name']}")
-                
-                elif event_type in ['mouse_active', 'keyboard_active']:
-                    insert_event(event_type, self.current_app, self.current_window_title, self.current_domain)
-                
+                    svc = data['service'] or data['app_name']
+                    print(f"[{ts}] {svc} ({data['category']})")
+
+                elif event_type in ('mouse_active', 'keyboard_active'):
+                    insert_event(event_type, self.current_app,
+                                 self.current_service, self.current_category,
+                                 self.current_window_title)
+
                 elif event_type == 'idle_start':
-                    insert_event('idle_start', self.current_app, self.current_window_title, self.current_domain)
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Idle started")
-                
+                    insert_event('idle_start', self.current_app,
+                                 self.current_service, self.current_category)
+                    print(f"[{ts}] Idle started")
+
                 elif event_type == 'idle_end':
-                    insert_event('idle_end', self.current_app, self.current_window_title, self.current_domain)
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Idle ended")
-                
+                    insert_event('idle_end', self.current_app,
+                                 self.current_service, self.current_category)
+                    print(f"[{ts}] Idle ended")
+
             except queue.Empty:
                 continue
-    
+
+    # ─── 起動 ────────────────────────────────────────
     def start(self):
-        """トラッキングを開始"""
-        print("Starting EventTracker...")
-        
-        # マウスリスナー
-        mouse_listener = mouse.Listener(
-            on_move=self.on_mouse_move,
-            on_click=self.on_mouse_click
-        )
-        mouse_listener.start()
-        
-        # キーボードリスナー
-        keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
-        keyboard_listener.start()
-        
-        # アイドルチェックスレッド
-        idle_thread = Thread(target=self.check_idle, daemon=True)
-        idle_thread.start()
-        
-        # ウィンドウ変更チェックスレッド
-        window_thread = Thread(target=self.check_window_change, daemon=True)
-        window_thread.start()
-        
-        # イベント処理スレッド
-        process_thread = Thread(target=self.process_events, daemon=True)
-        process_thread.start()
-        
+        print("Starting EventTracker (service-based schema)...")
+
+        if PYNPUT_AVAILABLE:
+            ml = mouse.Listener(on_move=self.on_mouse_move, on_click=self.on_mouse_click)
+            kl = keyboard.Listener(on_press=self.on_key_press)
+            ml.start()
+            kl.start()
+
+        Thread(target=self.check_idle, daemon=True).start()
+        Thread(target=self.check_window_change, daemon=True).start()
+        Thread(target=self.process_events, daemon=True).start()
+
         print("EventTracker started. Press Ctrl+C to stop.")
-        
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nStopping EventTracker...")
-            mouse_listener.stop()
-            keyboard_listener.stop()
+            if PYNPUT_AVAILABLE:
+                ml.stop()
+                kl.stop()
+
 
 if __name__ == "__main__":
-    tracker = EventTracker()
-    tracker.start()
+    EventTracker().start()

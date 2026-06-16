@@ -1,6 +1,6 @@
 import type { DashboardData, TimelineEntry, Transition, StoryResponse, Insight, Categories } from '../types/api';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = '/api';
 
 export async function getDashboard(): Promise<DashboardData> {
   const response = await fetch(`${API_BASE}/dashboard`);

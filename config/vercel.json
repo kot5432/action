@@ -1,5 +1,0 @@
-{
-  "buildCommand": "pip install -r requirements.txt && python scripts/build_web.py",
-  "outputDirectory": "frontend/public",
-  "installCommand": "pip install -r requirements.txt"
-}

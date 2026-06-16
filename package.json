@@ -1,0 +1,15 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し、単なる利用時間の記録ではなく「どのような行動の流れで時間を使ったのか」を可視化する行動理解プラットフォームです。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "recharts": "^3.8.1"
+  }
+}

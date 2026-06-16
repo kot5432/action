@@ -1,0 +1,243 @@
+1. DB設計書 
+まず、MVPではテーブルを増やしすぎない方が良いです。 
+ER図 
+events 
+│ 
+├── sessions 
+│ 
+└── transitions 
+events 
+生ログ保存 
+最重要テーブル 
+CREATE TABLE events ( 
+id INTEGER PRIMARY KEY AUTOINCREMENT, 
+timestamp DATETIME NOT NULL, 
+event_type TEXT NOT NULL, 
+app_name TEXT, 
+window_title TEXT, 
+domain TEXT, 
+metadata TEXT 
+); 
+event_type 
+window_changed 
+mouse_active 
+keyboard_active 
+idle_start 
+idle_end 
+ 
+サンプル 
+{ 
+ "id": 1, 
+ "timestamp": "2026-06-16T14:20:01", 
+ "event_type": "window_changed", 
+ "app_name": "chrome.exe", 
+ "domain": "youtube.com" 
+} 
+ 
+sessions 
+集計用 
+CREATE TABLE sessions ( 
+   id INTEGER PRIMARY KEY AUTOINCREMENT, 
+ 
+   start_time DATETIME NOT NULL, 
+   end_time DATETIME NOT NULL, 
+ 
+   duration_seconds INTEGER, 
+ 
+   app_name TEXT, 
+   domain TEXT 
+); 
+ 
+サンプル 
+{ 
+ "app_name":"chrome.exe", 
+ "domain":"youtube.com", 
+ "duration_seconds":1800 
+} 
+ 
+transitions 
+行動遷移分析 
+CREATE TABLE transitions ( 
+   id INTEGER PRIMARY KEY AUTOINCREMENT, 
+ 
+   timestamp DATETIME, 
+ 
+from_app TEXT, 
+from_domain TEXT, 
+to_app TEXT, 
+to_domain TEXT 
+); 
+サンプル 
+VSCode 
+↓ 
+GitHub 
+{ 
+"from_domain":"github.com", 
+"to_domain":"youtube.com" 
+} 
+category_rules 
+カテゴリ管理 
+CREATE TABLE category_rules ( 
+id INTEGER PRIMARY KEY AUTOINCREMENT, 
+domain TEXT, 
+category TEXT 
+); 
+例 
+github.com 
+→ 開発 
+chatgpt.com 
+→ 学習 
+youtube.com 
+→ 娯楽 
+2. API設計 
+ 
+GET /dashboard 
+現在状態取得 
+Response 
+{ 
+ "current_app":"VSCode", 
+ "current_domain":"github.com", 
+ 
+ "today_usage_minutes":320, 
+ 
+ "switch_count":42 
+} 
+ 
+GET /timeline 
+Query 
+?date=2026-06-16 
+ 
+Response 
+[ 
+ { 
+   "start":"09:00", 
+   "end":"10:20", 
+ 
+   "app":"VSCode", 
+   "domain":"github.com" 
+ } 
+] 
+ 
+GET /transitions 
+Response 
+[ 
+ { 
+   "from":"github.com", 
+   "to":"youtube.com", 
+ 
+   "count":18 
+ } 
+] 
+ 
+GET /story 
+最重要API 
+ 
+Query 
+?date=2026-06-16 
+ 
+Response 
+{ 
+ "story":[ 
+   { 
+     "time":"14:02", 
+     "text":"VSCodeで開発開始" 
+   }, 
+   { 
+     "time":"14:18", 
+     "text":"GitHubでエラー調査" 
+   }, 
+   { 
+     "time":"14:24", 
+     "text":"YouTubeで関連動画視聴" 
+   } 
+ ] 
+} 
+ 
+GET /insights 
+ 
+Response 
+[ 
+ { 
+   "type":"pattern", 
+   "message":"調査開始後にYouTubeへ遷移する傾向があります" 
+ } 
+] 
+ 
+3. 画面設計 
+Dashboard 
+┌────────────────────┐ 
+│ ActionTracker      
+│ 
+├────────────────────┤ 
+│ Current App        
+│ 
+│ VSCode             
+│ 00:23:14           
+│ 
+│ 
+├────────────────────┤ 
+│ Today              
+│ 
+│ 5h 21m             
+│ 
+├────────────────────┤ 
+│ Switches           
+│ 
+│ 42                 
+│ 
+└────────────────────┘ 
+Timeline 
+09:00 ━━━━━ VSCode 
+10:00 ━ Chrome 
+10:15 ━━ YouTube 
+10:45 ━━━━━ VSCode 
+実際はガントチャート 
+Story 
+ActionTracker最大の価値 
+今日の行動ストーリー 
+09:02 
+VSCodeで開発開始 
+09:34 
+GitHubでエラー調査 
+09:39 
+YouTubeで解説動画視聴 
+10:01 
+VSCodeへ復帰 
+Insights 
+行動パターン 
+・14時台にSNS利用が増加 
+・調査開始後に 
+動画サイトへ移動する傾向 
+・平均集中時間 
+32分 
+4. 開発ロードマップ 
+Phase1 
+ログ取得 
+期間 
+1週間 
+実装 
+● pywin32 
+● SQLite 
+● イベント保存 
+Phase2 
+可視化 
+期間 
+1週間 
+実装 
+● FastAPI 
+● React 
+● Dashboard 
+Phase3 
+分析 
+期間 
+1週間 
+実装 
+● Timeline 
+● Transition 
+Phase4 
+コア機能 
+期間 
+1〜2週間 
+実装 
+● Story Generator 
+● Insight Generator 

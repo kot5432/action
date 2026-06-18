@@ -8,6 +8,14 @@ export interface DashboardData {
   switch_count: number;
 }
 
+export interface CurrentSession {
+  app_name: string | null;
+  service: string | null;
+  category: string | null;
+  started_at: string | null;
+  duration_seconds: number;
+}
+
 export interface TimelineEntry {
   start: string;
   end: string;
@@ -44,4 +52,56 @@ export interface Insight {
 
 export interface Categories {
   [category: string]: string;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  color: string;
+}
+
+export interface CategoryCreate {
+  name: string;
+  color: string;
+}
+
+export interface CategoryUpdate {
+  name?: string;
+  color?: string;
+}
+
+export interface DailySummary {
+  total_usage_minutes: number;
+  switch_count: number;
+  focus_sessions: number;
+  top_services: {
+    service: string;
+    minutes: number;
+  }[];
+}
+
+export interface ServiceUsage {
+  service: string;
+  category: string | null;
+  minutes: number;
+}
+
+export interface CategoryUsage {
+  category: string;
+  minutes: number;
+}
+
+export interface HealthStatus {
+  status: 'ok' | 'error';
+  database: 'connected' | 'disconnected';
+  tracker: 'running' | 'stopped';
+}
+
+export interface PrivacySettings {
+  enabled: boolean;
+  masked_services: string[];
+}
+
+export interface RetentionSettings {
+  retention_days: number;
 }

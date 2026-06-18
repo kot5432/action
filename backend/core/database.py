@@ -73,6 +73,25 @@ def init_database():
         )
     ''')
 
+    # --- categories ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL UNIQUE,
+            color      TEXT,
+            created_at DATETIME,
+            updated_at DATETIME
+        )
+    ''')
+
+    # --- settings ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+
     # インデックス
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_timestamp   ON events(timestamp)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_service      ON events(service)')
@@ -84,6 +103,9 @@ def init_database():
 
     # category_rules にデフォルトデータを挿入
     _seed_category_rules(cursor)
+
+    # categories にデフォルトデータを挿入
+    _seed_categories(cursor)
 
     conn.commit()
     conn.close()
@@ -108,10 +130,32 @@ def _migrate_if_needed(cursor):
 
 def _seed_category_rules(cursor):
     """category_rules のデフォルト行を挿入（重複スキップ）"""
-    from backend.core.service_resolver import CATEGORY_RULES
+    # 循環インポートを避けるために遅延インポート
+    try:
+        from backend.core.service_resolver import CATEGORY_RULES
+        cursor.executemany(
+            "INSERT OR IGNORE INTO category_rules (service, category) VALUES (?, ?)",
+            list(CATEGORY_RULES.items())
+        )
+    except ImportError:
+        # service_resolverが利用できない場合はスキップ
+        pass
+
+
+def _seed_categories(cursor):
+    """categories のデフォルト行を挿入（重複スキップ）"""
+    default_categories = [
+        ("開発", "#2563eb"),
+        ("学習", "#16a34a"),
+        ("娯楽", "#d97706"),
+        ("SNS", "#f43f5e"),
+        ("コミュニケーション", "#7c3aed"),
+        ("その他", "#94a3b8"),
+    ]
+    now = datetime.now()
     cursor.executemany(
-        "INSERT OR IGNORE INTO category_rules (service, category) VALUES (?, ?)",
-        list(CATEGORY_RULES.items())
+        "INSERT OR IGNORE INTO categories (name, color, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        [(name, color, now, now) for name, color in default_categories]
     )
 
 

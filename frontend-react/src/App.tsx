@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { LayoutDashboard, Calendar, BookOpen, Lightbulb, BarChart2, Circle, Search } from 'lucide-react';
+import { LayoutDashboard, Calendar, BookOpen, Lightbulb, BarChart2, Circle, Search, Settings as SettingsIcon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Timeline from './components/Timeline';
 import Story from './components/Story';
 import Insights from './components/Insights';
+import Settings from './components/Settings';
 
-type View = 'dashboard' | 'timeline' | 'story' | 'insights';
+type View = 'dashboard' | 'timeline' | 'story' | 'insights' | 'settings';
 
 const navItems = [
   { id: 'dashboard' as View, label: 'Dashboard', icon: LayoutDashboard },
   { id: 'timeline' as View, label: 'Timeline', icon: Calendar },
   { id: 'story' as View, label: 'Story', icon: BookOpen },
   { id: 'insights' as View, label: 'Insights', icon: Lightbulb },
+  { id: 'settings' as View, label: 'Settings', icon: SettingsIcon },
 ];
 
 export default function App() {
@@ -91,6 +93,7 @@ export default function App() {
           {currentView === 'timeline' && <Timeline />}
           {currentView === 'story' && <Story />}
           {currentView === 'insights' && <Insights />}
+          {currentView === 'settings' && <Settings />}
         </main>
       </div>
     </div>

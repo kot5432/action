@@ -1,6 +1,7 @@
 import time
 import sys
 import os
+import json
 from datetime import datetime
 from threading import Thread
 import queue
@@ -21,6 +22,29 @@ except ImportError:
 
 
 PRIVACY_MODE = True
+STATE_FILE = os.path.join(ROOT, "data", "current_session.json")
+
+
+def _write_state(app_name, service, category, session_start_time):
+    """現在のセッション状態をJSONファイルに書き出す（APIが読み込　）"""
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        now = datetime.now()
+        duration_sec = int((now - session_start_time).total_seconds()) if session_start_time else 0
+        state = {
+            "app_name":         app_name,
+            "service":          service,
+            "category":         category,
+            "session_start":    session_start_time.isoformat() if session_start_time else None,
+            "duration_seconds": duration_sec,
+            "updated_at":       now.isoformat(),
+        }
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False)
+        os.replace(tmp, STATE_FILE)
+    except Exception:
+        pass
 
 
 class EventTracker:
@@ -30,7 +54,6 @@ class EventTracker:
         self.is_idle = False
         self.event_queue = queue.Queue()
 
-        # 現在のセッション情報（app_name, service, category, window_title）
         self.current_app = None
         self.current_service = None
         self.current_category = None
@@ -46,7 +69,6 @@ class EventTracker:
 
     def on_mouse_move(self, x, y):
         self._activity()
-        self.event_queue.put(('mouse_active', None))
 
     def on_mouse_click(self, x, y, button, pressed):
         self._activity()
@@ -64,34 +86,42 @@ class EventTracker:
                 self.is_idle = True
                 self.event_queue.put(('idle_start', None))
 
+    # ─── 状態ファイル定期書き込み ─────────────────────
+    def flush_state(self):
+        """2秒ごとに現在セッションをファイルへ書き出す"""
+        while True:
+            time.sleep(2)
+            if self.current_app and self.session_start_time:
+                _write_state(
+                    self.current_app,
+                    self.current_service,
+                    self.current_category,
+                    self.session_start_time,
+                )
+
     # ─── ウィンドウ変更監視 ──────────────────────────
     def check_window_change(self):
         while True:
             time.sleep(2)
-            raw = get_active_app()  # "msedge.exe [YouTube - Microsoft Edge]"
+            raw = get_active_app()
 
-            # app_name と window_title を分離
             if '[' in raw:
-                app_name    = raw.split('[')[0].strip()
+                app_name     = raw.split('[')[0].strip()
                 window_title = raw.split('[', 1)[1].rstrip(']')
             else:
                 app_name     = raw
                 window_title = None
 
-            # サービス名とカテゴリを解決
             service, category = resolve_service(app_name, window_title or "")
 
-            # プライバシーモード: 機密サービスはマスク
             if PRIVACY_MODE and should_mask(service):
                 service      = None
                 window_title = '***'
                 category     = "その他"
 
-            # ウィンドウが変わったか (service 単位で判定)
             changed = (service != self.current_service or app_name != self.current_app)
 
             if changed:
-                # 前のセッションを記録
                 if self.current_app and self.session_start_time:
                     end_time = datetime.now()
                     duration = int((end_time - self.session_start_time).total_seconds())
@@ -100,7 +130,6 @@ class EventTracker:
                         self.current_app, self.current_service, self.current_category,
                     )
 
-                # 遷移を記録 (同一サービスへの戻りは除外)
                 if self.current_service and service and self.current_service != service:
                     insert_transition(
                         datetime.now(),
@@ -120,6 +149,9 @@ class EventTracker:
                 self.current_category     = category
                 self.current_window_title = window_title
                 self.session_start_time   = datetime.now()
+
+                # ウィンドウ切替時は即時書き込み
+                _write_state(app_name, service, category, self.session_start_time)
 
     # ─── イベント処理 ────────────────────────────────
     def process_events(self):
@@ -167,9 +199,10 @@ class EventTracker:
             ml.start()
             kl.start()
 
-        Thread(target=self.check_idle, daemon=True).start()
+        Thread(target=self.check_idle,        daemon=True).start()
         Thread(target=self.check_window_change, daemon=True).start()
-        Thread(target=self.process_events, daemon=True).start()
+        Thread(target=self.process_events,    daemon=True).start()
+        Thread(target=self.flush_state,       daemon=True).start()
 
         print("EventTracker started. Press Ctrl+C to stop.")
         try:
@@ -177,6 +210,19 @@ class EventTracker:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nStopping EventTracker...")
+            # 終了時にセッションを保存
+            if self.current_app and self.session_start_time:
+                end_time = datetime.now()
+                duration = int((end_time - self.session_start_time).total_seconds())
+                insert_session(
+                    self.session_start_time, end_time, duration,
+                    self.current_app, self.current_service, self.current_category,
+                )
+            # 状態ファイルを削除
+            try:
+                os.remove(STATE_FILE)
+            except FileNotFoundError:
+                pass
             if PYNPUT_AVAILABLE:
                 ml.stop()
                 kl.stop()

@@ -32,6 +32,15 @@ class PrivacySettings(BaseModel):
 class RetentionSettings(BaseModel):
     retention_days: int
 
+
+class CategoryRuleCreate(BaseModel):
+    service: str
+    category: str
+
+
+class CategoryRuleUpdate(BaseModel):
+    category: str
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -771,3 +780,90 @@ def get_categories_usage(range: Optional[str] = Query(default="today")):
 
     conn.close()
     return result
+
+
+@app.get("/category-rules")
+def get_category_rules():
+    """
+    カテゴリルール一覧取得
+    Response: [{id, service, category}]
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT id, service, category
+        FROM category_rules
+        ORDER BY service
+    ''')
+
+    result = []
+    for row in cur.fetchall():
+        result.append({
+            "id": row['id'],
+            "service": row['service'],
+            "category": row['category'],
+        })
+
+    conn.close()
+    return result
+
+
+@app.post("/category-rules")
+def create_category_rule(rule: CategoryRuleCreate):
+    """
+    カテゴリルール追加
+    Request: {service, category}
+    Response: {success: true, id}
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        INSERT INTO category_rules (service, category)
+        VALUES (?, ?)
+    ''', (rule.service, rule.category))
+
+    conn.commit()
+    rule_id = cur.lastrowid
+    conn.close()
+
+    return {"success": True, "id": rule_id}
+
+
+@app.put("/category-rules/{rule_id}")
+def update_category_rule(rule_id: int, rule: CategoryRuleUpdate):
+    """
+    カテゴリルール編集
+    Request: {category}
+    Response: {success: true}
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        UPDATE category_rules
+        SET category = ?
+        WHERE id = ?
+    ''', (rule.category, rule_id))
+
+    conn.commit()
+    conn.close()
+
+    return {"success": True}
+
+
+@app.delete("/category-rules/{rule_id}")
+def delete_category_rule(rule_id: int):
+    """
+    カテゴリルール削除
+    Response: {success: true}
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('DELETE FROM category_rules WHERE id = ?', (rule_id,))
+    conn.commit()
+    conn.close()
+
+    return {"success": True}

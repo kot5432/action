@@ -15,6 +15,9 @@ import type {
   HealthStatus,
   PrivacySettings,
   RetentionSettings,
+  CategoryRule,
+  CategoryRuleCreate,
+  CategoryRuleUpdate,
 } from '../types/api';
 
 const API_BASE = '/api';
@@ -132,6 +135,36 @@ export async function updateRetention(settings: RetentionSettings): Promise<{ su
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
+  });
+  return response.json();
+}
+
+export async function getCategoryRules(): Promise<CategoryRule[]> {
+  const response = await fetch(`${API_BASE}/category-rules`);
+  return response.json();
+}
+
+export async function createCategoryRule(rule: CategoryRuleCreate): Promise<{ success: boolean; id: number }> {
+  const response = await fetch(`${API_BASE}/category-rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rule),
+  });
+  return response.json();
+}
+
+export async function updateCategoryRule(ruleId: number, rule: CategoryRuleUpdate): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/category-rules/${ruleId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rule),
+  });
+  return response.json();
+}
+
+export async function deleteCategoryRule(ruleId: number): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/category-rules/${ruleId}`, {
+    method: 'DELETE',
   });
   return response.json();
 }

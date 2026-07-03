@@ -13,14 +13,16 @@ ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し�
 
 ### 実装済みの機能
 
-- **F-001 行動イベント収集**: アクティブウィンドウ変更、マウス操作、キーボード操作、アイドル状態変化
-- **F-002 リアルタイムダッシュボード**: 現在利用中アプリ、利用開始時刻、継続時間、本日の利用時間、切替回数
-- **F-003 タイムライン表示**: 1日の行動履歴を時系列で表示
-- **F-004 アプリ遷移分析**: アプリ間およびサービス間の遷移を分析
-- **F-005 行動ストーリー生成**: 行動履歴を人が理解しやすい文章へ変換
-- **F-006 インサイト生成**: 行動パターンから傾向を抽出
-- **F-007 行動カテゴリ分析**: 開発、学習、娯楽、SNS、コミュニケーションなどのカテゴリ別分析
-- **F-008 プライバシーモード**: 銀行サイト、証券サイト、メール、パスワードマネージャー等の機密情報をマスク
+- **行動イベント収集**: アクティブウィンドウ変更、マウス操作、キーボード操作、アイドル状態変化
+- **リアルタイムダッシュボード**: 現在利用中アプリ、利用開始時刻、継続時間、本日の利用時間、切替回数
+- **タイムライン表示**: 1日の行動履歴を時系列で表示
+- **アプリ遷移分析**: アプリ間およびサービス間の遷移を分析
+- **行動ストーリー生成**: 行動履歴を人が理解しやすい文章へ変換
+- **インサイト生成**: 行動パターンから傾向を抽出
+- **行動カテゴリ分析**: 開発、学習、娯楽、SNS、コミュニケーションなどのカテゴリ別分析
+- **カテゴリ管理**: カテゴリの追加、編集、削除
+- **プライバシー設定**: 機密サービスのマスク設定
+- **データ保持設定**: データの保存期間設定
 
 ## 技術スタック
 
@@ -43,97 +45,155 @@ ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し�
 
 ## セットアップ
 
-### 1. 依存関係のインストール
+詳細なセットアップ手順は [USAGE.md](USAGE.md) を参照してください。
+
+### 簡易セットアップ
 
 ```bash
-# Python依存関係
+# Python依存関係のインストール
 pip install -r requirements.txt
 
 # データベース初期化
-python backend/core/database.py
-```
+python -c "from backend.core.database import init_database; init_database()"
 
-### 2. Frontendのセットアップ
-
-```bash
+# Frontendのセットアップ
 cd frontend-react
 npm install
 ```
 
-### 3. データベース初期化
-
-```bash
-python backend/core/database.py
-```
-
 ## 実行方法
 
-### 1. Tracker Agentの起動
+### Windows (推奨)
+
+```bash
+# すべてのサービスを一括起動
+start_action_tracker.bat
+```
+
+### 手動起動
+
+#### 1. Tracker Agentの起動
 
 ```bash
 python backend/tracker/event_tracker.py
 ```
 
-### 2. FastAPIサーバーの起動
+#### 2. FastAPIサーバーの起動
 
 ```bash
-python backend/api/fastapi_app.py
+uvicorn backend.api.fastapi_app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-または
-
-```bash
-uvicorn backend.api.fastapi_app:app --reload --host 127.0.0.1 --port 8000
-```
-
-### 3. Frontendの起動
+#### 3. Frontendの起動
 
 ```bash
 cd frontend-react
 npm run dev
 ```
 
-### 4. アクセス
+### アクセス
 
 - Frontend: http://localhost:5173
-- API: http://127.0.0.1:8000
-- APIドキュメント: http://127.0.0.1:8000/docs
+- API: http://localhost:8000
+- APIドキュメント: http://localhost:8000/docs
 
 ## APIエンドポイント
 
-### GET /
+### 基本エンドポイント
+
+#### GET /
 ルートエンドポイント
+- Response: `{message, version}`
 
-### GET /dashboard
+#### GET /health
+システム状態確認
+- Response: `{status, database, tracker}`
+
+### データ取得エンドポイント
+
+#### GET /current
+現在進行中のセッションを取得
+- Response: `{app_name, service, category, started_at, duration_seconds}`
+
+#### GET /dashboard
 現在状態を取得
-- Response: `{current_app, current_domain, today_usage_minutes, switch_count}`
+- Response: `{current_app, current_service, current_category, session_start_time, session_duration_minutes, today_usage_minutes, switch_count}`
 
-### GET /timeline
+#### GET /timeline
 タイムラインを取得
-- Query: `?date=2026-06-16`
-- Response: `[{start, end, app, domain, duration_seconds}]`
+- Query: `?date=2026-06-16` (オプション)
+- Response: `[{start, end, app, service, category, duration_seconds}]`
 
-### GET /transitions
+#### GET /transitions
 遷移データを取得
 - Query: `?date=2026-06-16` (オプション)
-- Response: `[{from, to, count}]`
+- Response: `[{from, to, from_category, to_category, count}]`
 
-### GET /story
+#### GET /story
 行動ストーリーを取得
-- Query: `?date=2026-06-16`
-- Response: `{story: [{time, text}]}`
+- Query: `?date=2026-06-16` (オプション)
+- Response: `{story: [{time, text, service, category}], total_drift_minutes}`
 
-### GET /insights
+#### GET /insights
 インサイトを取得
 - Response: `[{type, message}]`
 
-### GET /categories
-カテゴリ別集計を取得
-- Response: `{category: time}`
+#### GET /summary
+日次サマリーを取得
+- Query: `?date=2026-06-16` (オプション)
+- Response: `{total_usage_minutes, switch_count, focus_sessions, top_services}`
+
+#### GET /services
+サービス別利用時間を取得
+- Query: `?range=today` (today, 7d, 30d, all)
+- Response: `[{service, minutes}]`
+
+#### GET /categories/usage
+カテゴリ別利用時間を取得
+- Query: `?range=today` (today, 7d, 30d, all)
+- Response: `[{category, minutes}]`
+
+### 管理エンドポイント
+
+#### GET /categories
+カテゴリ一覧を取得
+- Response: `[{id, name, color}]`
+
+#### POST /categories
+カテゴリを追加
+- Request: `{name, color}`
+- Response: `{success, id}`
+
+#### PUT /categories/{category_id}
+カテゴリを更新
+- Request: `{name?, color?}`
+- Response: `{success}`
+
+#### DELETE /categories/{category_id}
+カテゴリを削除
+- Response: `{success}`
+
+#### GET /privacy
+プライバシー設定を取得
+- Response: `{enabled, masked_services}`
+
+#### PUT /privacy
+プライバシー設定を更新
+- Request: `{enabled, masked_services}`
+- Response: `{success}`
+
+#### GET /settings/retention
+データ保持設定を取得
+- Response: `{retention_days}`
+
+#### PUT /settings/retention
+データ保持設定を更新
+- Request: `{retention_days}`
+- Response: `{success}`
 
 ## プライバシーモード
 
-プライバシーモードはデフォルトで有効になっています。以下のドメインを含むサイトは自動的にマスクされます：
+プライバシーモードはSettings画面から設定できます。デフォルトで有効になっており、以下のドメインを含むサービスは自動的にマスクされます：
 
 - bank
 - securities
@@ -144,10 +204,7 @@ npm run dev
 - bitwarden
 - lastpass
 
-プライバシーモードを無効にするには、以下のファイルで `PRIVACY_MODE = False` に設定してください：
-
-- `backend/api/fastapi_app.py`
-- `backend/tracker/event_tracker.py`
+マスク対象サービスはSettings画面からカスタマイズ可能です。
 
 ## データベース構造
 
@@ -160,8 +217,9 @@ npm run dev
 | timestamp | DATETIME | 発生時刻 |
 | event_type | TEXT | イベント種別 |
 | app_name | TEXT | アプリ名 |
+| service | TEXT | サービス名 |
+| category | TEXT | カテゴリ名 |
 | window_title | TEXT | ウィンドウタイトル |
-| domain | TEXT | ドメイン名 |
 | metadata | TEXT | メタデータ |
 
 ### sessions
@@ -174,7 +232,8 @@ npm run dev
 | end_time | DATETIME | 終了時刻 |
 | duration_seconds | INTEGER | 利用時間（秒） |
 | app_name | TEXT | アプリ名 |
-| domain | TEXT | ドメイン名 |
+| service | TEXT | サービス名 |
+| category | TEXT | カテゴリ名 |
 
 ### transitions
 行動遷移分析用テーブル
@@ -183,19 +242,38 @@ npm run dev
 |--------|------|------|
 | id | INTEGER | 主キー |
 | timestamp | DATETIME | 発生時刻 |
-| from_app | TEXT | 遷移元アプリ |
-| from_domain | TEXT | 遷移元ドメイン |
-| to_app | TEXT | 遷移先アプリ |
-| to_domain | TEXT | 遷移先ドメイン |
+| from_service | TEXT | 遷移元サービス |
+| to_service | TEXT | 遷移先サービス |
+| from_category | TEXT | 遷移元カテゴリ |
+| to_category | TEXT | 遷移先カテゴリ |
 
 ### category_rules
+カテゴリルール管理用テーブル
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| id | INTEGER | 主キー |
+| service | TEXT | サービス名 |
+| category | TEXT | カテゴリ名 |
+
+### categories
 カテゴリ管理用テーブル
 
 | カラム | 型 | 説明 |
 |--------|------|------|
 | id | INTEGER | 主キー |
-| domain | TEXT | ドメイン名 |
-| category | TEXT | カテゴリ名 |
+| name | TEXT | カテゴリ名 |
+| color | TEXT | カテゴリ色 |
+| created_at | DATETIME | 作成日時 |
+| updated_at | DATETIME | 更新日時 |
+
+### settings
+設定管理用テーブル
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| key | TEXT | 設定キー |
+| value | TEXT | 設定値 |
 
 ## ライセンス
 
@@ -203,9 +281,11 @@ MIT License
 
 ## 今後の展望
 
-- URL解析強化
+- サービス解析強化
 - クラウド同期
 - モバイルアプリ連携
 - AIによる行動分析
 - 行動予測
 - パーソナルコーチ機能
+- データエクスポート機能
+- チーム/組織向け機能

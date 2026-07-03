@@ -34,7 +34,6 @@ const fmtDate = (d: string) => {
 };
 
 const CARD = { backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)' };
-const GANTT_START = 9*60, GANTT_END = 22*60, GANTT_RANGE = GANTT_END - GANTT_START;
 
 export default function Timeline() {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
@@ -55,7 +54,26 @@ export default function Timeline() {
 
   // ガント表示: service 単位でグループ化
   const serviceNames = [...new Set(timeline.map(e => e.service ?? e.app))];
-  const hours = Array.from({length:14},(_,i)=>i+9);
+
+  // 動的な時間範囲計算
+  const allMinutes = timeline.flatMap(e => {
+    const sm = toMin(e.start);
+    const em = e.end ? toMin(e.end) : sm + Math.floor(e.duration_seconds/60);
+    return [sm, em];
+  });
+  const minMinute = allMinutes.length > 0 ? Math.min(...allMinutes) : 0;
+  const maxMinute = allMinutes.length > 0 ? Math.max(...allMinutes) : 24*60;
+  const GANTT_START = Math.floor(minMinute / 60) * 60; // 時間単位に切り下げ
+  const GANTT_END = Math.ceil(maxMinute / 60) * 60 + 60; // 時間単位に切り上げ+1時間
+  const GANTT_RANGE = GANTT_END - GANTT_START;
+  // 時間軸を1時間ごとに表示
+  const startHour = Math.floor(GANTT_START / 60);
+  const endHour = Math.floor(GANTT_END / 60);
+  const hours = [];
+  for (let h = startHour; h <= endHour; h += 1) {
+    hours.push(h % 24); // 24時間制に変換
+  }
+
 
   return (
     <div className="space-y-4">
@@ -120,7 +138,7 @@ export default function Timeline() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div style={{ minWidth: 600 }}>
+          <div style={{ minWidth: 1200 }}>
             <div className="flex mb-2.5 ml-28">
               {hours.map(h => <div key={h} className="flex-1 text-[10px] text-slate-400 text-center">{String(h).padStart(2,'0')}:00</div>)}
             </div>
@@ -140,9 +158,11 @@ export default function Timeline() {
                     const width = (em-sm)/GANTT_RANGE*100;
                     const catColor = CATEGORY_COLORS[entry.category ?? ''] ?? '#94a3b8';
                     if (left < 0 || left > 100) return null;
+                    // 最小幅を固定値にして、短いセッションも表示
+                    const finalWidth = Math.max(3, width); // 最小3%
                     return (
-                      <div key={idx} className="absolute top-1 bottom-1 rounded-md flex items-center px-1.5 overflow-hidden"
-                        style={{ left:`${Math.max(0,left)}%`, width:`${Math.max(0.5,Math.min(width,100-left))}%`, backgroundColor: catColor, opacity: 0.85 }}
+                      <div key={`${svcName}-${idx}-${entry.start}`} className="absolute top-1 bottom-1 rounded-md flex items-center px-1.5 overflow-hidden"
+                        style={{ left:`${Math.max(0,left)}%`, width:`${Math.min(finalWidth, 100-left)}%`, backgroundColor: catColor, opacity: 0.85 }}
                         title={`${entry.start}–${entry.end ?? ''} ${svcName} (${fmtDur(entry.duration_seconds)})`}>
                         <span className="text-[10px] text-white truncate">{entry.category}</span>
                       </div>

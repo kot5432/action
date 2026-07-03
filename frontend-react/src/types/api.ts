@@ -105,3 +105,18 @@ export interface PrivacySettings {
 export interface RetentionSettings {
   retention_days: number;
 }
+
+export interface CategoryRule {
+  id: number;
+  service: string;
+  category: string;
+}
+
+export interface CategoryRuleCreate {
+  service: string;
+  category: string;
+}
+
+export interface CategoryRuleUpdate {
+  category: string;
+}

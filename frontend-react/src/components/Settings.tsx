@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Shield, Clock, Plus, Trash2, Edit2 } from 'lucide-react';
+import { Settings as SettingsIcon, Shield, Clock, Plus, Trash2, Edit2, List } from 'lucide-react';
 import {
   getCategoriesList,
   createCategory,
@@ -9,29 +9,39 @@ import {
   updatePrivacy,
   getRetention,
   updateRetention,
+  getCategoryRules,
+  createCategoryRule,
+  updateCategoryRule,
+  deleteCategoryRule,
 } from '../lib/api';
-import type { Category, PrivacySettings, RetentionSettings } from '../types/api';
+import type { Category, PrivacySettings, RetentionSettings, CategoryRule } from '../types/api';
 
 export default function Settings() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [privacy, setPrivacy] = useState<PrivacySettings>({ enabled: true, masked_services: [] });
   const [retention, setRetention] = useState<RetentionSettings>({ retention_days: 90 });
+  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3B82F6');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [newRuleService, setNewRuleService] = useState('');
+  const [newRuleCategory, setNewRuleCategory] = useState('');
+  const [editingRule, setEditingRule] = useState<CategoryRule | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [cats, priv, ret] = await Promise.all([
+        const [cats, priv, ret, rules] = await Promise.all([
           getCategoriesList(),
           getPrivacy(),
           getRetention(),
+          getCategoryRules(),
         ]);
         setCategories(cats);
         setPrivacy(priv);
         setRetention(ret);
+        setCategoryRules(rules);
       } catch (error) {
         console.error('Failed to fetch settings:', error);
       } finally {
@@ -88,6 +98,40 @@ export default function Settings() {
       await updateRetention(retention);
     } catch (error) {
       console.error('Failed to update retention:', error);
+    }
+  };
+
+  const handleAddRule = async () => {
+    if (!newRuleService.trim() || !newRuleCategory.trim()) return;
+    try {
+      await createCategoryRule({ service: newRuleService, category: newRuleCategory });
+      const updated = await getCategoryRules();
+      setCategoryRules(updated);
+      setNewRuleService('');
+      setNewRuleCategory('');
+    } catch (error) {
+      console.error('Failed to create category rule:', error);
+    }
+  };
+
+  const handleUpdateRule = async (rule: CategoryRule) => {
+    try {
+      await updateCategoryRule(rule.id, { category: rule.category });
+      const updated = await getCategoryRules();
+      setCategoryRules(updated);
+      setEditingRule(null);
+    } catch (error) {
+      console.error('Failed to update category rule:', error);
+    }
+  };
+
+  const handleDeleteRule = async (id: number) => {
+    try {
+      await deleteCategoryRule(id);
+      const updated = await getCategoryRules();
+      setCategoryRules(updated);
+    } catch (error) {
+      console.error('Failed to delete category rule:', error);
     }
   };
 
@@ -201,6 +245,109 @@ export default function Settings() {
               )}
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Category Rules Management */}
+      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <List className="w-5 h-5 text-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900">カテゴリルール管理</h2>
+          </div>
+        </div>
+
+        {/* Add Rule */}
+        <div className="flex items-center space-x-3 mb-6">
+          <input
+            type="text"
+            value={newRuleService}
+            onChange={(e) => setNewRuleService(e.target.value)}
+            placeholder="アプリ名またはサービス名"
+            className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <select
+            value={newRuleCategory}
+            onChange={(e) => setNewRuleCategory(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          >
+            <option value="">カテゴリを選択</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.name}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleAddRule}
+            className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>追加</span>
+          </button>
+        </div>
+
+        {/* Rules List */}
+        <div className="space-y-3">
+          {categoryRules.map((rule) => (
+            <div key={rule.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              {editingRule?.id === rule.id ? (
+                <div className="flex items-center space-x-3 flex-grow">
+                  <span className="text-gray-900 font-medium">{rule.service}</span>
+                  <select
+                    value={editingRule.category}
+                    onChange={(e) => setEditingRule({ ...editingRule, category: e.target.value })}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => handleUpdateRule(editingRule)}
+                    className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
+                  >
+                    保存
+                  </button>
+                  <button
+                    onClick={() => setEditingRule(null)}
+                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center space-x-3">
+                    <span className="text-gray-900 font-medium">{rule.service}</span>
+                    <span className="text-gray-600">→</span>
+                    <span className="text-gray-900">{rule.category}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setEditingRule(rule)}
+                      className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRule(rule.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {categoryRules.length === 0 && (
+            <div className="text-center py-8 text-gray-500 text-sm">
+              カテゴリルールがありません
+            </div>
+          )}
         </div>
       </div>
 

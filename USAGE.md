@@ -81,13 +81,7 @@ EventTracker started. Press Ctrl+C to stop.
 
 ```bash
 cd c:\Users\kkyog\cousor\action
-python backend/api/fastapi_app.py
-```
-
-または、uvicornを使用する場合：
-
-```bash
-uvicorn backend.api.fastapi_app:app --reload --host 127.0.0.1 --port 8000
+uvicorn backend.api.fastapi_app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 成功すると以下のメッセージが表示されます：

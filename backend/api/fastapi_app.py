@@ -6,10 +6,15 @@ import sqlite3
 import json
 import os
 
+# Configuration
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "action_tracker.db")
 STATE_FILE = os.path.join(DATA_DIR, "current_session.json")
+
+# Constants
+EXCLUDED_SERVICES = ('unknown', 'Unknown', '不明')
+LIVE_SESSION_MAX_AGE_SECONDS = 10
 
 app = FastAPI(title="ActionTracker API", version="2.0.0")
 
@@ -43,14 +48,14 @@ def _read_live_session() -> Optional[dict]:
     """
     トラッカーが書き出した current_session.json を読む。
     ファイルがなければ None を返す（トラッカー未起動）。
-    10秒以上更新がなければ古いとみなして None を返す。
+    LIVE_SESSION_MAX_AGE_SECONDS 秒以上更新がなければ古いとみなして None を返す。
     """
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
         updated_at = datetime.fromisoformat(data["updated_at"])
         age = (datetime.now() - updated_at).total_seconds()
-        if age > 10:
+        if age > LIVE_SESSION_MAX_AGE_SECONDS:
             return None
         # 経過秒数を再計算（ファイルに書かれた値より正確）
         if data.get("session_start"):
@@ -86,10 +91,11 @@ def get_dashboard():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    cur.execute('''
+    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    cur.execute(f'''
         SELECT COALESCE(SUM(duration_seconds), 0) as total
-        FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
-    ''', (today,))
+        FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
+    ''', (today, *EXCLUDED_SERVICES))
     db_total_sec = cur.fetchone()['total']
 
     cur.execute('''
@@ -156,7 +162,8 @@ def get_timeline(date: Optional[str] = Query(default=None)):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('''
+    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    cur.execute(f'''
         SELECT
             TIME(start_time)  as start,
             TIME(end_time)    as end,
@@ -165,9 +172,9 @@ def get_timeline(date: Optional[str] = Query(default=None)):
             category,
             duration_seconds
         FROM sessions
-        WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
+        WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
         ORDER BY start_time
-    ''', (date,))
+    ''', (date, *EXCLUDED_SERVICES))
 
     result = []
     for row in cur.fetchall():
@@ -254,12 +261,13 @@ def get_story(date: Optional[str] = Query(default=None)):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('''
+    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    cur.execute(f'''
         SELECT TIME(start_time) as time, app_name, service, category, duration_seconds
         FROM sessions
-        WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
+        WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
         ORDER BY start_time
-    ''', (date,))
+    ''', (date, *EXCLUDED_SERVICES))
 
     story = []
     total_drift_minutes = 0
@@ -292,7 +300,7 @@ def get_story(date: Optional[str] = Query(default=None)):
 
 
 def _story_text(service: str, category: str, dur_min: int) -> str:
-    """サービス名 + カヅゴリからストーリー文を生成する"""
+    """サービス名 + カテゴリからストーリー文を生成する"""
     dur_str = f"（{dur_min}分）" if dur_min >= 1 else ""
 
     templates: dict[str, str] = {
@@ -341,35 +349,36 @@ def get_insights():
                 break
 
     # 時間帯別のピーク
-    cur.execute('''
+    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    cur.execute(f'''
         SELECT CAST(strftime('%H', start_time) AS INTEGER) as hour,
                SUM(duration_seconds) as total
-        FROM sessions WHERE service NOT IN ('unknown', 'Unknown', '不明')
+        FROM sessions WHERE service NOT IN ({placeholders})
         GROUP BY hour ORDER BY total DESC LIMIT 1
-    ''')
+    ''', (*EXCLUDED_SERVICES,))
     peak = cur.fetchone()
     if peak:
         insights.append({
             "type":    "time_pattern",
-            "message": f"{peak['hour']}時台に最も多く活動してありみす",
+            "message": f"{peak['hour']}時台に最も多く活動しています",
         })
 
     # カテゴリ別利用傾向
-    cur.execute('''
+    cur.execute(f'''
         SELECT category, SUM(duration_seconds) as total
-        FROM sessions WHERE category IS NOT NULL AND service NOT IN ('unknown', 'Unknown', '不明')
+        FROM sessions WHERE category IS NOT NULL AND service NOT IN ({placeholders})
         GROUP BY category ORDER BY total DESC LIMIT 1
-    ''')
+    ''', (*EXCLUDED_SERVICES,))
     top_cat = cur.fetchone()
     if top_cat:
         m = int(top_cat['total'] / 60)
         insights.append({
             "type":    "focus",
-            "message": f"最も多いカヅゴリは「{top_cat['category']}」（{m}分）",
+            "message": f"最も多いカテゴリは「{top_cat['category']}」（{m}分）",
         })
 
-    # 平均・ッヷョン時間
-    cur.execute("SELECT AVG(duration_seconds) as avg FROM sessions WHERE service NOT IN ('unknown', 'Unknown', '不明')")
+    # 平均セッション時間
+    cur.execute(f"SELECT AVG(duration_seconds) as avg FROM sessions WHERE service NOT IN ({placeholders})", (*EXCLUDED_SERVICES,))
     avg = cur.fetchone()['avg']
     if avg:
         insights.append({
@@ -384,17 +393,18 @@ def get_insights():
 @app.get("/categories")
 def get_categories():
     """
-    行動カヅゴリ分析
+    行動カテゴリ分析
     Response: {category: "X時間Y分"}
     """
     conn = get_db()
     cur = conn.cursor()
-    cur.execute('''
+    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    cur.execute(f'''
         SELECT category, SUM(duration_seconds) as total
         FROM sessions
-        WHERE category IS NOT NULL AND service NOT IN ('unknown', 'Unknown', '不明')
+        WHERE category IS NOT NULL AND service NOT IN ({placeholders})
         GROUP BY category ORDER BY total DESC
-    ''')
+    ''', (*EXCLUDED_SERVICES,))
     result = {}
     for row in cur.fetchall():
         h = int(row['total'] / 3600)

@@ -1,45 +1,17 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 import sqlite3
+import json
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(ROOT, "data")
 DB_PATH = os.path.join(DATA_DIR, "action_tracker.db")
+STATE_FILE = os.path.join(DATA_DIR, "current_session.json")
 
 app = FastAPI(title="ActionTracker API", version="2.0.0")
-
-
-# Pydantic models
-class CategoryCreate(BaseModel):
-    name: str
-    color: str
-
-
-class CategoryUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
-
-
-class PrivacySettings(BaseModel):
-    enabled: bool
-    masked_services: list[str]
-
-
-class RetentionSettings(BaseModel):
-    retention_days: int
-
-
-class CategoryRuleCreate(BaseModel):
-    service: str
-    category: str
-
-
-class CategoryRuleUpdate(BaseModel):
-    category: str
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,6 +39,28 @@ def _mask(service: Optional[str]) -> Optional[str]:
         return service
 
 
+def _read_live_session() -> Optional[dict]:
+    """
+    トラッカーが書き出した current_session.json を読む。
+    ファイルがなければ None を返す（トラッカー未起動）。
+    10秒以上更新がなければ古いとみなして None を返す。
+    """
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        updated_at = datetime.fromisoformat(data["updated_at"])
+        age = (datetime.now() - updated_at).total_seconds()
+        if age > 10:
+            return None
+        # 経過秒数を再計算（ファイルに書かれた値より正確）
+        if data.get("session_start"):
+            start_dt = datetime.fromisoformat(data["session_start"])
+            data["duration_seconds"] = int((datetime.now() - start_dt).total_seconds())
+        return data
+    except Exception:
+        return None
+
+
 # ─────────────────────────────────────────────
 # エンドポイント
 # ─────────────────────────────────────────────
@@ -76,188 +70,19 @@ def root():
     return {"message": "ActionTracker API", "version": "2.0.0"}
 
 
-@app.get("/health")
-def health_check():
-    """
-    システム状態確認
-    Response: {status, database, tracker}
-    """
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        conn.close()
-        db_status = "connected"
-    except Exception:
-        db_status = "disconnected"
-
-    # Trackerの状態は簡易的にOKとする
-    tracker_status = "running"
-
-    return {
-        "status": "ok" if db_status == "connected" else "error",
-        "database": db_status,
-        "tracker": tracker_status,
-    }
-
-
-@app.get("/current")
-def get_current():
-    """
-    現在進行中のセッションを取得する
-    Response: {app_name, service, category, started_at, duration_seconds}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('''
-        SELECT app_name, service, category, start_time, duration_seconds
-        FROM sessions
-        ORDER BY start_time DESC LIMIT 1
-    ''')
-    latest = cur.fetchone()
-    conn.close()
-
-    if not latest:
-        return {
-            "app_name": None,
-            "service": None,
-            "category": None,
-            "started_at": None,
-            "duration_seconds": 0,
-        }
-
-    # 現在のセッションの継続時間を再計算
-    started_at = latest['start_time']
-    duration_seconds = int((datetime.now() - started_at).total_seconds())
-
-    return {
-        "app_name": latest['app_name'],
-        "service": _mask(latest['service']),
-        "category": latest['category'],
-        "started_at": started_at.isoformat(),
-        "duration_seconds": duration_seconds,
-    }
-
-
-@app.get("/privacy")
-def get_privacy():
-    """
-    プライバシー設定取得
-    Response: {enabled, masked_services}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    # プライバシーモードの有効/無効
-    cur.execute("SELECT value FROM settings WHERE key = 'privacy_enabled'")
-    row = cur.fetchone()
-    enabled = row['value'] == 'true' if row else True
-
-    # マスク対象サービス
-    cur.execute("SELECT value FROM settings WHERE key = 'masked_services'")
-    row = cur.fetchone()
-    masked_services = []
-    if row:
-        try:
-            import json
-            masked_services = json.loads(row['value'])
-        except:
-            masked_services = []
-
-    conn.close()
-
-    return {
-        "enabled": enabled,
-        "masked_services": masked_services,
-    }
-
-
-@app.put("/privacy")
-def update_privacy(settings: PrivacySettings):
-    """
-    プライバシー設定更新
-    Request: {enabled, masked_services}
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    # プライバシーモードの有効/無効
-    cur.execute('''
-        INSERT OR REPLACE INTO settings (key, value)
-        VALUES ('privacy_enabled', ?)
-    ''', ('true' if settings.enabled else 'false',))
-
-    # マスク対象サービス
-    import json
-    cur.execute('''
-        INSERT OR REPLACE INTO settings (key, value)
-        VALUES ('masked_services', ?)
-    ''', (json.dumps(settings.masked_services),))
-
-    conn.commit()
-    conn.close()
-
-    return {"success": True}
-
-
-@app.get("/settings/retention")
-def get_retention():
-    """
-    データ保持設定取得
-    Response: {retention_days}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT value FROM settings WHERE key = 'retention_days'")
-    row = cur.fetchone()
-    retention_days = int(row['value']) if row else 90
-
-    conn.close()
-
-    return {"retention_days": retention_days}
-
-
-@app.put("/settings/retention")
-def update_retention(settings: RetentionSettings):
-    """
-    データ保持設定更新
-    Request: {retention_days}
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('''
-        INSERT OR REPLACE INTO settings (key, value)
-        VALUES ('retention_days', ?)
-    ''', (str(settings.retention_days),))
-
-    conn.commit()
-    conn.close()
-
-    return {"success": True}
-
-
 @app.get("/dashboard")
 def get_dashboard():
     """
-    現在状態取得
+    現在状態取得（ライブセッション優先）
     Response: {current_app, current_service, current_category,
                session_start_time, session_duration_minutes,
                today_usage_minutes, switch_count}
     """
+    # ライブセッション（トラッカーが 2 秒ごとに書き出す JSON）を最優先で使う
+    live = _read_live_session()
+
     conn = get_db()
     cur = conn.cursor()
-
-    cur.execute('''
-        SELECT app_name, service, category, start_time, duration_seconds
-        FROM sessions
-        ORDER BY start_time DESC LIMIT 1
-    ''')
-    latest = cur.fetchone()
 
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -265,7 +90,7 @@ def get_dashboard():
         SELECT COALESCE(SUM(duration_seconds), 0) as total
         FROM sessions WHERE DATE(start_time) = ?
     ''', (today,))
-    total_sec = cur.fetchone()['total']
+    db_total_sec = cur.fetchone()['total']
 
     cur.execute('''
         SELECT COUNT(*) as cnt FROM transitions WHERE DATE(timestamp) = ?
@@ -274,12 +99,36 @@ def get_dashboard():
 
     conn.close()
 
+    if live:
+        # ライブセッション分を合計に加算（まだ DB に書かれていないため）
+        total_sec = db_total_sec + live.get("duration_seconds", 0)
+        service = _mask(live.get("service"))
+        return {
+            "current_app":              live.get("app_name", "—"),
+            "current_service":          service,
+            "current_category":         live.get("category"),
+            "session_start_time":       live.get("session_start", "")[-8:] if live.get("session_start") else None,
+            "session_duration_minutes": int(live.get("duration_seconds", 0) / 60),
+            "today_usage_minutes":      int(total_sec / 60),
+            "switch_count":             switch_count,
+        }
+
+    # ライブセッションなし（トラッカー未起動）→ DB の最新レコードにフォールバック
+    conn2 = get_db()
+    cur2 = conn2.cursor()
+    cur2.execute('''
+        SELECT app_name, service, category, start_time, duration_seconds
+        FROM sessions ORDER BY start_time DESC LIMIT 1
+    ''')
+    latest = cur2.fetchone()
+    conn2.close()
+
     service = _mask(latest['service'] if latest else None)
     session_start = None
     session_min = 0
     if latest:
         try:
-            session_start = str(latest['start_time'])[-8:]  # HH:MM:SS
+            session_start = str(latest['start_time'])[-8:]
         except Exception:
             pass
         session_min = int((latest['duration_seconds'] or 0) / 60)
@@ -290,7 +139,7 @@ def get_dashboard():
         "current_category":         latest['category'] if latest else None,
         "session_start_time":       session_start,
         "session_duration_minutes": session_min,
-        "today_usage_minutes":      int(total_sec / 60),
+        "today_usage_minutes":      int(db_total_sec / 60),
         "switch_count":             switch_count,
     }
 
@@ -298,11 +147,12 @@ def get_dashboard():
 @app.get("/timeline")
 def get_timeline(date: Optional[str] = Query(default=None)):
     """
-    タイムライン表示
+    タイムライン表示（ライブセッションを末尾に追加）
     Response: [{start, end, app, service, category, duration_seconds}]
     """
+    today = datetime.now().strftime("%Y-%m-%d")
     if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
+        date = today
 
     conn = get_db()
     cur = conn.cursor()
@@ -330,66 +180,27 @@ def get_timeline(date: Optional[str] = Query(default=None)):
             "duration_seconds": row['duration_seconds'],
         })
     conn.close()
+
+    # 今日のタイムラインにはライブセッション（DB未保存）を末尾に追加
+    if date == today:
+        live = _read_live_session()
+        if live and live.get("session_start"):
+            start_dt = datetime.fromisoformat(live["session_start"])
+            now = datetime.now()
+            # DB 最終レコードと重複していないか確認
+            last_start = result[-1]["start"] if result else None
+            live_start_str = start_dt.strftime("%H:%M:%S")
+            if last_start != live_start_str:
+                result.append({
+                    "start":            live_start_str,
+                    "end":              now.strftime("%H:%M:%S"),
+                    "app":              live.get("app_name", ""),
+                    "service":          _mask(live.get("service")),
+                    "category":         live.get("category"),
+                    "duration_seconds": live.get("duration_seconds", 0),
+                })
+
     return result
-
-
-@app.get("/summary")
-def get_summary(date: Optional[str] = Query(default=None)):
-    """
-    日次サマリー取得
-    Response: {total_usage_minutes, switch_count, focus_sessions, top_services}
-    """
-    if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    # 合計利用時間
-    cur.execute('''
-        SELECT COALESCE(SUM(duration_seconds), 0) as total
-        FROM sessions WHERE DATE(start_time) = ?
-    ''', (date,))
-    total_sec = cur.fetchone()['total']
-
-    # 切替回数
-    cur.execute('''
-        SELECT COUNT(*) as cnt FROM transitions WHERE DATE(timestamp) = ?
-    ''', (date,))
-    switch_count = cur.fetchone()['cnt']
-
-    # 集中セッション数（開発・学習カテゴリ）
-    cur.execute('''
-        SELECT COUNT(*) as cnt
-        FROM sessions
-        WHERE DATE(start_time) = ? AND category IN ('開発', '学習')
-    ''', (date,))
-    focus_sessions = cur.fetchone()['cnt']
-
-    # トップサービス
-    cur.execute('''
-        SELECT service, SUM(duration_seconds) as total
-        FROM sessions
-        WHERE DATE(start_time) = ? AND service IS NOT NULL
-        GROUP BY service
-        ORDER BY total DESC
-        LIMIT 5
-    ''', (date,))
-    top_services = []
-    for row in cur.fetchall():
-        top_services.append({
-            "service": _mask(row['service']),
-            "minutes": int(row['total'] / 60),
-        })
-
-    conn.close()
-
-    return {
-        "total_usage_minutes": int(total_sec / 60),
-        "switch_count": switch_count,
-        "focus_sessions": focus_sessions,
-        "top_services": top_services,
-    }
 
 
 @app.get("/transitions")
@@ -428,62 +239,6 @@ def get_transitions(date: Optional[str] = Query(default=None)):
             "to_category":   row['to_category'],
             "count":         row['count'],
         })
-    conn.close()
-    return result
-
-
-@app.get("/services")
-def get_services(range: Optional[str] = Query(default="today")):
-    """
-    サービス別利用時間取得
-    Query: today, 7d, 30d, all
-    Response: [{service, category, minutes}]
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    # 日付範囲の計算
-    date_condition = ""
-    params = ()
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    if range == "today":
-        date_condition = "WHERE DATE(start_time) = ?"
-        params = (today,)
-    elif range == "7d":
-        date_condition = "WHERE DATE(start_time) >= ?"
-        from datetime import timedelta
-        start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        params = (start_date,)
-    elif range == "30d":
-        date_condition = "WHERE DATE(start_time) >= ?"
-        from datetime import timedelta
-        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        params = (start_date,)
-    elif range == "all":
-        date_condition = ""
-        params = ()
-    else:
-        date_condition = "WHERE DATE(start_time) = ?"
-        params = (today,)
-
-    cur.execute(f'''
-        SELECT service, category, SUM(duration_seconds) as total
-        FROM sessions
-        {date_condition}
-        AND service IS NOT NULL
-        GROUP BY service, category
-        ORDER BY total DESC
-    ''', params)
-
-    result = []
-    for row in cur.fetchall():
-        result.append({
-            "service": _mask(row['service']),
-            "category": row['category'],
-            "minutes": int(row['total'] / 60),
-        })
-
     conn.close()
     return result
 
@@ -537,7 +292,7 @@ def get_story(date: Optional[str] = Query(default=None)):
 
 
 def _story_text(service: str, category: str, dur_min: int) -> str:
-    """サービス名 + カテゴリからストーリー文を生成する"""
+    """サービス名 + カヅゴリからストーリー文を生成する"""
     dur_str = f"（{dur_min}分）" if dur_min >= 1 else ""
 
     templates: dict[str, str] = {
@@ -595,7 +350,7 @@ def get_insights():
     if peak:
         insights.append({
             "type":    "time_pattern",
-            "message": f"{peak['hour']}時台に最も多く活動しています",
+            "message": f"{peak['hour']}時台に最も多く活動してありみす",
         })
 
     # カテゴリ別利用傾向
@@ -609,10 +364,10 @@ def get_insights():
         m = int(top_cat['total'] / 60)
         insights.append({
             "type":    "focus",
-            "message": f"最も多いカテゴリは「{top_cat['category']}」（{m}分）",
+            "message": f"最も多いカヅゴリは「{top_cat['category']}」（{m}分）",
         })
 
-    # 平均セッション時間
+    # 平均・ッヷョン時間
     cur.execute('SELECT AVG(duration_seconds) as avg FROM sessions')
     avg = cur.fetchone()['avg']
     if avg:
@@ -626,244 +381,23 @@ def get_insights():
 
 
 @app.get("/categories")
-def get_categories_list():
+def get_categories():
     """
-    カテゴリ一覧取得
-    Response: [{id, name, color}]
+    行動カヅゴリ分析
+    Response: {category: "X時間Y分"}
     """
     conn = get_db()
     cur = conn.cursor()
-
     cur.execute('''
-        SELECT id, name, color
-        FROM categories
-        ORDER BY name
-    ''')
-
-    result = []
-    for row in cur.fetchall():
-        result.append({
-            "id": row['id'],
-            "name": row['name'],
-            "color": row['color'],
-        })
-
-    conn.close()
-    return result
-
-
-@app.post("/categories")
-def create_category(category: CategoryCreate):
-    """
-    カテゴリ追加
-    Request: {name, color}
-    Response: {success: true, id}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    now = datetime.now()
-    cur.execute('''
-        INSERT INTO categories (name, color, created_at, updated_at)
-        VALUES (?, ?, ?, ?)
-    ''', (category.name, category.color, now, now))
-
-    conn.commit()
-    category_id = cur.lastrowid
-    conn.close()
-
-    return {"success": True, "id": category_id}
-
-
-@app.put("/categories/{category_id}")
-def update_category(category_id: int, category: CategoryUpdate):
-    """
-    カテゴリ編集
-    Request: {name?, color?}
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    updates = []
-    params = []
-    if category.name:
-        updates.append("name = ?")
-        params.append(category.name)
-    if category.color:
-        updates.append("color = ?")
-        params.append(category.color)
-
-    if updates:
-        updates.append("updated_at = ?")
-        params.append(datetime.now())
-        params.append(category_id)
-
-        cur.execute(f'''
-            UPDATE categories
-            SET {', '.join(updates)}
-            WHERE id = ?
-        ''', params)
-
-        conn.commit()
-
-    conn.close()
-    return {"success": True}
-
-
-@app.delete("/categories/{category_id}")
-def delete_category(category_id: int):
-    """
-    カテゴリ削除
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('DELETE FROM categories WHERE id = ?', (category_id,))
-    conn.commit()
-    conn.close()
-
-    return {"success": True}
-
-
-@app.get("/categories/usage")
-def get_categories_usage(range: Optional[str] = Query(default="today")):
-    """
-    カテゴリ別利用時間取得
-    Query: today, 7d, 30d, all
-    Response: [{category, minutes}]
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    # 日付範囲の計算
-    date_condition = ""
-    params = ()
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    if range == "today":
-        date_condition = "WHERE DATE(start_time) = ?"
-        params = (today,)
-    elif range == "7d":
-        date_condition = "WHERE DATE(start_time) >= ?"
-        from datetime import timedelta
-        start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        params = (start_date,)
-    elif range == "30d":
-        date_condition = "WHERE DATE(start_time) >= ?"
-        from datetime import timedelta
-        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        params = (start_date,)
-    elif range == "all":
-        date_condition = ""
-        params = ()
-    else:
-        date_condition = "WHERE DATE(start_time) = ?"
-        params = (today,)
-
-    cur.execute(f'''
         SELECT category, SUM(duration_seconds) as total
         FROM sessions
-        {date_condition}
-        AND category IS NOT NULL
-        GROUP BY category
-        ORDER BY total DESC
-    ''', params)
-
-    result = []
-    for row in cur.fetchall():
-        result.append({
-            "category": row['category'],
-            "minutes": int(row['total'] / 60),
-        })
-
-    conn.close()
-    return result
-
-
-@app.get("/category-rules")
-def get_category_rules():
-    """
-    カテゴリルール一覧取得
-    Response: [{id, service, category}]
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('''
-        SELECT id, service, category
-        FROM category_rules
-        ORDER BY service
+        WHERE category IS NOT NULL
+        GROUP BY category ORDER BX total DESC
     ''')
-
-    result = []
+    result = {}
     for row in cur.fetchall():
-        result.append({
-            "id": row['id'],
-            "service": row['service'],
-            "category": row['category'],
-        })
-
+        h = int(row['total'] / 3600)
+        m = int((row['total'] % 3600) / 60)
+        result[row['category']] = f"{h}時間{m}分" if h > 0 else f"{m}分"
     conn.close()
     return result
-
-
-@app.post("/category-rules")
-def create_category_rule(rule: CategoryRuleCreate):
-    """
-    カテゴリルール追加
-    Request: {service, category}
-    Response: {success: true, id}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('''
-        INSERT INTO category_rules (service, category)
-        VALUES (?, ?)
-    ''', (rule.service, rule.category))
-
-    conn.commit()
-    rule_id = cur.lastrowid
-    conn.close()
-
-    return {"success": True, "id": rule_id}
-
-
-@app.put("/category-rules/{rule_id}")
-def update_category_rule(rule_id: int, rule: CategoryRuleUpdate):
-    """
-    カテゴリルール編集
-    Request: {category}
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('''
-        UPDATE category_rules
-        SET category = ?
-        WHERE id = ?
-    ''', (rule.category, rule_id))
-
-    conn.commit()
-    conn.close()
-
-    return {"success": True}
-
-
-@app.delete("/category-rules/{rule_id}")
-def delete_category_rule(rule_id: int):
-    """
-    カテゴリルール削除
-    Response: {success: true}
-    """
-    conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute('DELETE FROM category_rules WHERE id = ?', (rule_id,))
-    conn.commit()
-    conn.close()
-
-    return {"success": True}

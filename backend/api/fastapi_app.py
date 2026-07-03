@@ -88,7 +88,7 @@ def get_dashboard():
 
     cur.execute('''
         SELECT COALESCE(SUM(duration_seconds), 0) as total
-        FROM sessions WHERE DATE(start_time) = ?
+        FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
     ''', (today,))
     db_total_sec = cur.fetchone()['total']
 
@@ -165,7 +165,7 @@ def get_timeline(date: Optional[str] = Query(default=None)):
             category,
             duration_seconds
         FROM sessions
-        WHERE DATE(start_time) = ?
+        WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
         ORDER BY start_time
     ''', (date,))
 
@@ -257,7 +257,7 @@ def get_story(date: Optional[str] = Query(default=None)):
     cur.execute('''
         SELECT TIME(start_time) as time, app_name, service, category, duration_seconds
         FROM sessions
-        WHERE DATE(start_time) = ?
+        WHERE DATE(start_time) = ? AND service NOT IN ('unknown', 'Unknown', '不明')
         ORDER BY start_time
     ''', (date,))
 
@@ -344,7 +344,8 @@ def get_insights():
     cur.execute('''
         SELECT CAST(strftime('%H', start_time) AS INTEGER) as hour,
                SUM(duration_seconds) as total
-        FROM sessions GROUP BY hour ORDER BY total DESC LIMIT 1
+        FROM sessions WHERE service NOT IN ('unknown', 'Unknown', '不明')
+        GROUP BY hour ORDER BY total DESC LIMIT 1
     ''')
     peak = cur.fetchone()
     if peak:
@@ -356,7 +357,7 @@ def get_insights():
     # カテゴリ別利用傾向
     cur.execute('''
         SELECT category, SUM(duration_seconds) as total
-        FROM sessions WHERE category IS NOT NULL
+        FROM sessions WHERE category IS NOT NULL AND service NOT IN ('unknown', 'Unknown', '不明')
         GROUP BY category ORDER BY total DESC LIMIT 1
     ''')
     top_cat = cur.fetchone()
@@ -368,7 +369,7 @@ def get_insights():
         })
 
     # 平均・ッヷョン時間
-    cur.execute('SELECT AVG(duration_seconds) as avg FROM sessions')
+    cur.execute("SELECT AVG(duration_seconds) as avg FROM sessions WHERE service NOT IN ('unknown', 'Unknown', '不明')")
     avg = cur.fetchone()['avg']
     if avg:
         insights.append({
@@ -391,8 +392,8 @@ def get_categories():
     cur.execute('''
         SELECT category, SUM(duration_seconds) as total
         FROM sessions
-        WHERE category IS NOT NULL
-        GROUP BY category ORDER BX total DESC
+        WHERE category IS NOT NULL AND service NOT IN ('unknown', 'Unknown', '不明')
+        GROUP BY category ORDER BY total DESC
     ''')
     result = {}
     for row in cur.fetchall():

@@ -168,3 +168,71 @@ export async function deleteCategoryRule(ruleId: number): Promise<{ success: boo
   });
   return response.json();
 }
+
+export async function getScores(date?: string): Promise<import('../types/api').ScoresData> {
+  const url = date ? `${API_BASE}/scores?date=${date}` : `${API_BASE}/scores`;
+  const response = await fetch(url);
+  return response.json();
+}
+
+export async function getDailyStory(date?: string): Promise<import('../types/api').DailyStory> {
+  const url = date ? `${API_BASE}/daily-story?date=${date}` : `${API_BASE}/daily-story`;
+  const response = await fetch(url);
+  return response.json();
+}
+
+export async function getSessionBlocks(date?: string): Promise<import('../types/api').SessionBlocksResponse> {
+  const url = date ? `${API_BASE}/session-blocks?date=${date}` : `${API_BASE}/session-blocks`;
+  const response = await fetch(url);
+  return response.json();
+}
+
+export async function getTagUsageStats(date?: string): Promise<import('../types/api').TagUsageStats[]> {
+  const url = date ? `${API_BASE}/tag-usage-stats?date=${date}` : `${API_BASE}/tag-usage-stats`;
+  const response = await fetch(url);
+  return response.json();
+}
+
+export async function getTags(): Promise<import('../types/api').Tag[]> {
+  const response = await fetch(`${API_BASE}/tags`);
+  return response.json();
+}
+
+export async function createTag(tag: import('../types/api').TagCreate): Promise<{ success: boolean; id: number }> {
+  const response = await fetch(`${API_BASE}/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tag),
+  });
+  return response.json();
+}
+
+export async function updateTag(tagId: number, tag: import('../types/api').TagUpdate): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/tags/${tagId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tag),
+  });
+  return response.json();
+}
+
+export async function deleteTag(tagId: number): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/tags/${tagId}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+}
+
+export async function getNotificationSettings(): Promise<import('../types/api').NotificationSettings> {
+  const response = await fetch(`${API_BASE}/notification-settings`);
+  return response.json();
+}
+
+export async function updateNotificationSettings(settings: import('../types/api').NotificationSettingsUpdate): Promise<{ success: boolean }> {
+  const response = await fetch(`${API_BASE}/notification-settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  return response.json();
+}

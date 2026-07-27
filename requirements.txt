@@ -10,3 +10,9 @@ pandas
 psutil
 sqlalchemy
 uvicorn[standard]
+duckdb
+fastapi
+pandas
+psutil
+sqlalchemy
+uvicorn[standard]

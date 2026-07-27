@@ -233,3 +233,4 @@ export interface SessionBlocksResponse {
   date: string;
   blocks: SessionBlock[];
 }
+

@@ -251,6 +251,28 @@ def _migrate_if_needed(cursor):
     except Exception:
         pass
 
+    # category_rules のスキーマを最新版に合わせるマイグレーション
+    try:
+        cursor.execute("PRAGMA table_info(category_rules)")
+        cr_cols = [row[1] for row in cursor.fetchall()]
+        if cr_cols:
+            for col, definition in [
+                ("pattern",    "TEXT"),
+                ("priority",   "INTEGER DEFAULT 0"),
+                ("is_regex",   "BOOLEAN DEFAULT 0"),
+                ("enabled",    "BOOLEAN DEFAULT 1"),
+                ("created_at", "DATETIME"),
+                ("updated_at", "DATETIME"),
+            ]:
+                if col not in cr_cols:
+                    cursor.execute(f"ALTER TABLE category_rules ADD COLUMN {col} {definition}")
+                    print(f"[migration] Added column {col} to category_rules")
+            # service カラムがあれば pattern へコピー（旧スキーマ互換）
+            if "service" in cr_cols:
+                cursor.execute("UPDATE category_rules SET pattern = service WHERE pattern IS NULL")
+    except Exception as e:
+        print(f"[migration] category_rules migration warning: {e}")
+
 
 def _seed_category_rules(cursor):
     """category_rules のデフォルト行を挿入（重複スキップ）"""

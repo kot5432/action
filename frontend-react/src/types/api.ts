@@ -47,7 +47,10 @@ export interface StoryResponse {
 
 export interface Insight {
   type: string;
+  category: string;
   message: string;
+  severity: 'success' | 'warning' | 'danger' | 'info';
+  data: Record<string, any>;
 }
 
 export interface Categories {
@@ -108,15 +111,125 @@ export interface RetentionSettings {
 
 export interface CategoryRule {
   id: number;
-  service: string;
+  pattern: string;
   category: string;
+  priority: number;
+  is_regex: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CategoryRuleCreate {
-  service: string;
+  pattern: string;
   category: string;
+  priority?: number;
+  is_regex?: boolean;
+  enabled?: boolean;
 }
 
 export interface CategoryRuleUpdate {
+  pattern?: string;
+  category?: string;
+  priority?: number;
+  is_regex?: boolean;
+  enabled?: boolean;
+}
+
+export interface CategoryRuleTest {
+  pattern: string;
+  service_name: string;
+  is_regex?: boolean;
+}
+
+// ============================================================
+// 行動タグ管理用型定義
+// ============================================================
+
+export interface Tag {
+  id: number;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+export interface TagCreate {
+  name: string;
+  color?: string;
+}
+
+export interface TagUpdate {
+  name?: string;
+  color?: string;
+}
+
+export interface ServiceTagAssign {
+  service: string;
+  tag_id: number;
+}
+
+export interface TagUsageStats {
+  name: string;
+  color: string | null;
+  usage_count: number;
+  total_duration: number;
+}
+
+// ============================================================
+// 通知設定用型定義
+// ============================================================
+
+export interface NotificationSettings {
+  id: number;
+  enabled: boolean;
+  time: string | null;
+  last_sent: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface NotificationSettingsUpdate {
+  enabled: boolean;
+  time?: string;
+}
+
+// ============================================================
+// 行動スコアリング用型定義
+// ============================================================
+
+export interface ScoresData {
+  date: string;
+  total_minutes: number;
+  focus_minutes: number;
+  distract_minutes: number;
+  session_count: number;
+  derail_count: number;
+  return_rate: number;
+  score_focus: number;
+  score_derail: number;
+  productivity_index: number;
+}
+
+export interface DailyStory {
+  date: string;
+  story: string;
+  total_focus_minutes: number;
+  total_derail_count: number;
+  score: number;
+}
+
+export interface SessionBlock {
+  start_time: string;
+  end_time: string;
+  duration_seconds: number;
   category: string;
+  is_focus: boolean;
+  is_derail: boolean;
+  focus_level: number;
+  session_count: number;
+}
+
+export interface SessionBlocksResponse {
+  date: string;
+  blocks: SessionBlock[];
 }

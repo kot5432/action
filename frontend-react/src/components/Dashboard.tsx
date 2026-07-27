@@ -1,191 +1,209 @@
 import { useEffect, useState } from 'react';
-import { Clock, SwitchCamera, Pause, Square, Target, TrendingUp, MessageSquare } from 'lucide-react';
+import { Clock, AlertTriangle, TrendingUp, Target, MessageSquare, Zap } from 'lucide-react';
 import { getDashboard, getScores, getDailyStory } from '../lib/api';
 import type { DashboardData, ScoresData, DailyStory } from '../types/api';
 
+const CARD = {
+  backgroundColor: '#131629',
+  border: '1px solid #1a2040',
+  borderRadius: 12,
+};
+
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [scores, setScores] = useState<ScoresData | null>(null);
+  const [data,       setData]       = useState<DashboardData | null>(null);
+  const [scores,     setScores]     = useState<ScoresData | null>(null);
   const [dailyStory, setDailyStory] = useState<DailyStory | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading,    setLoading]    = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
+    async function load() {
       try {
-        const [dashboardData, scoresData] = await Promise.all([
-          getDashboard(),
-          getScores()
-        ]);
-        setData(dashboardData);
-        setScores(scoresData);
-        
-        // デイリーストーリーはエラーがあっても無視
-        try {
-          const storyData = await getDailyStory();
-          setDailyStory(storyData);
-        } catch (storyError) {
-          console.warn('Failed to fetch daily story:', storyError);
-        }
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
+        const [d, s] = await Promise.all([getDashboard(), getScores()]);
+        setData(d); setScores(s);
+        try { setDailyStory(await getDailyStory()); } catch {}
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
     }
-    fetchData();
+    load();
+    const id = setInterval(load, 10000);
+    return () => clearInterval(id);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">Failed to load data</div>
-      </div>
-    );
-  }
-
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
+  const fmt = (m: number) => {
+    const h = Math.floor(m / 60), min = m % 60;
+    return h > 0 ? `${h}h ${min}m` : `${min}m`;
+  };
+  const fmtTimer = (m: number) => {
+    const h = Math.floor(m / 60), min = m % 60;
+    return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`;
   };
 
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    const secs = 0;
-    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200, color:'#3d4560', fontSize:13 }}>
+      読み込み中...
+    </div>
+  );
+  if (!data) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200, color:'#ef4444', fontSize:13 }}>
+      データの取得に失敗しました
+    </div>
+  );
+
+  const productivity = scores?.productivity_index ?? 0;
+  const focusPct = scores?.score_focus ?? 0;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div style={{ maxWidth: 1100 }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">現在の状態をリアルタイムで確認</p>
-        </div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.03em' }}>ダッシュボード</h1>
+        <p style={{ fontSize: 12, color: '#3d4560', marginTop: 3 }}>現在の作業状況をリアルタイムで確認</p>
       </div>
 
-      {/* Today's Summary - 今日の一言 */}
-      {dailyStory && dailyStory.story && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0 p-2 bg-blue-100 rounded-lg">
-              <MessageSquare className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="flex-grow">
-              <h3 className="text-sm font-semibold text-blue-900 mb-2">今日の一言</h3>
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {typeof dailyStory.story === 'string' 
-                  ? (dailyStory.story.length > 200 
-                      ? dailyStory.story.substring(0, 200) + '...' 
-                      : dailyStory.story)
-                  : '今日のストーリーを生成中...'}
-              </p>
-            </div>
-          </div>
+      {/* Current session hero card */}
+      <div style={{
+        ...CARD,
+        padding: '20px 24px',
+        marginBottom: 16,
+        background: 'linear-gradient(135deg, #131629 60%, #1a1040)',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        {/* green dot */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 6px #10b981' }} />
+          <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600, letterSpacing: '0.06em' }}>
+            {data.current_category ?? 'アクティブセッション'}
+          </span>
+          {data.current_category && (
+            <span style={{
+              marginLeft: 6, padding: '2px 8px',
+              backgroundColor: '#ef4444', borderRadius: 4,
+              fontSize: 11, fontWeight: 700, color: '#fff',
+            }}>セッション中</span>
+          )}
         </div>
-      )}
-
-      {/* Current Activity */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex-grow">
-            <p className="text-sm text-gray-500 mb-2">現在のアクティビティ</p>
-            <div className="flex items-center space-x-4">
-              <div>
-                <p className="text-2xl font-semibold text-gray-900">{data.current_app}</p>
-                {data.current_service && (
-                  <p className="text-sm text-gray-400 mt-1">{data.current_service}</p>
-                )}
-              </div>
-              <div className="text-2xl font-mono text-gray-700">
-                {formatDuration(data.session_duration_minutes)}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
-              <Pause className="w-5 h-5 text-gray-600" />
-            </button>
-            <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
-              <Square className="w-5 h-5 text-gray-600" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Grid - 最適化されたレイアウト */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Productivity Index - 最も重要 */}
-        {scores && (
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-3">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              <span className="text-xs text-green-600 font-medium">生産性指数</span>
-            </div>
-            <p className="text-4xl font-bold text-gray-900">
-              {scores.productivity_index.toFixed(2)}
-            </p>
-            <p className="text-sm text-gray-600 mt-1">
-              復帰率: {scores.return_rate.toFixed(1)}%
-            </p>
-          </div>
-        )}
-
-        {/* Focus Score */}
-        {scores && (
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-3">
-              <Target className="w-5 h-5 text-blue-600" />
-              <span className="text-xs text-blue-600 font-medium">集中スコア</span>
-            </div>
-            <p className="text-4xl font-bold text-gray-900">
-              {scores.score_focus.toFixed(1)}%
-            </p>
-            <p className="text-sm text-gray-600 mt-1">
-              {formatTime(scores.focus_minutes)}
-            </p>
-          </div>
-        )}
-
-        {/* Today's Usage */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-3">
-            <Clock className="w-5 h-5 text-gray-400" />
-            <span className="text-xs text-gray-400">今日の合計使用時間</span>
-          </div>
-          <p className="text-4xl font-semibold text-gray-900">
-            {formatTime(data.today_usage_minutes)}
+        <h2 style={{ fontSize: 26, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.03em', marginBottom: 4 }}>
+          {data.current_app || '—'}
+        </h2>
+        {data.current_service && (
+          <p style={{ fontSize: 13, color: '#5d6680', marginBottom: 12 }}>
+            サービス: <span style={{ color: '#8892b0' }}>{data.current_service}</span>
           </p>
+        )}
+        <div style={{ fontFamily: 'monospace', fontSize: 36, fontWeight: 700, color: '#7c3aed', letterSpacing: 2 }}>
+          {fmtTimer(data.session_duration_minutes)}
+        </div>
+        <p style={{ fontSize: 11, color: '#3d4560', marginTop: 4 }}>経過時間</p>
+      </div>
+
+      {/* Stats grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        {/* Focus time */}
+        <div style={{ ...CARD, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Clock size={14} color="#3b82f6" />
+            <span style={{ fontSize: 10, color: '#3d4560', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              集中時間
+            </span>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#3b82f6', letterSpacing: '-0.02em' }}>
+            {fmt(scores?.focus_minutes ?? 0)}
+          </div>
+          <div style={{ fontSize: 10, color: '#3d4560', marginTop: 4 }}>Focus Time</div>
+          <div style={{ marginTop: 8, height: 2, backgroundColor: '#1a2040', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${focusPct}%`, backgroundColor: '#3b82f6', borderRadius: 2 }} />
+          </div>
         </div>
 
-        {/* Derail Count */}
-        {scores && (
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-3">
-              <SwitchCamera className="w-5 h-5 text-orange-400" />
-              <span className="text-xs text-gray-400">脱線回数</span>
-            </div>
-            <p className="text-4xl font-semibold text-gray-900">
-              {scores.derail_count}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              スコア: {scores.score_derail.toFixed(1)}%
-            </p>
+        {/* Derailments */}
+        <div style={{ ...CARD, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <AlertTriangle size={14} color="#f59e0b" />
+            <span style={{ fontSize: 10, color: '#3d4560', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              脱線回数
+            </span>
           </div>
-        )}
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#f59e0b', letterSpacing: '-0.02em' }}>
+            {scores?.derail_count ?? 0}
+            <span style={{ fontSize: 14, color: '#5d6680', fontWeight: 400, marginLeft: 4 }}>回</span>
+          </div>
+          <div style={{ fontSize: 10, color: '#3d4560', marginTop: 4 }}>Derailments</div>
+        </div>
+
+        {/* Return rate */}
+        <div style={{ ...CARD, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <TrendingUp size={14} color="#10b981" />
+            <span style={{ fontSize: 10, color: '#3d4560', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              復帰率
+            </span>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#10b981', letterSpacing: '-0.02em' }}>
+            {(scores?.return_rate ?? 0).toFixed(1)}%
+          </div>
+          <div style={{ fontSize: 10, color: '#3d4560', marginTop: 4 }}>Return Rate</div>
+          <div style={{ marginTop: 8, height: 2, backgroundColor: '#1a2040', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${scores?.return_rate ?? 0}%`, backgroundColor: '#10b981', borderRadius: 2 }} />
+          </div>
+        </div>
+
+        {/* Productivity */}
+        <div style={{ ...CARD, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Zap size={14} color="#a78bfa" />
+            <span style={{ fontSize: 10, color: '#3d4560', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              生産性指数
+            </span>
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#a78bfa', letterSpacing: '-0.02em' }}>
+            {productivity.toFixed(1)}
+            <span style={{ fontSize: 12, color: '#5d6680', fontWeight: 400 }}>/100</span>
+          </div>
+          <div style={{ fontSize: 10, color: '#3d4560', marginTop: 4 }}>Productivity</div>
+        </div>
+      </div>
+
+      {/* Bottom row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {/* Today usage */}
+        <div style={{ ...CARD, padding: '18px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <Target size={14} color="#6d28d9" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#8892b0' }}>今日の合計使用時間</span>
+          </div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.03em' }}>
+            {fmt(data.today_usage_minutes)}
+          </div>
+          <div style={{ marginTop: 10, height: 3, backgroundColor: '#1a2040', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.min((data.today_usage_minutes / 480) * 100, 100)}%`,
+              background: 'linear-gradient(90deg, #6d28d9, #3b82f6)',
+              borderRadius: 3,
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 10, color: '#3d4560' }}>0h</span>
+            <span style={{ fontSize: 10, color: '#3d4560' }}>目標 8h</span>
+          </div>
+        </div>
+
+        {/* Daily story */}
+        <div style={{ ...CARD, padding: '18px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <MessageSquare size={14} color="#f59e0b" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#8892b0' }}>今日の一言</span>
+          </div>
+          {dailyStory?.story && dailyStory.story !== '今日のデータはまだありません' ? (
+            <p style={{ fontSize: 12, color: '#8892b0', lineHeight: 1.7, margin: 0 }}>
+              {dailyStory.story.length > 160 ? dailyStory.story.slice(0, 160) + '…' : dailyStory.story}
+            </p>
+          ) : (
+            <p style={{ fontSize: 12, color: '#3d4560', lineHeight: 1.7, margin: 0 }}>
+              今日のデータはまだありません
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

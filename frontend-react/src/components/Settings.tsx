@@ -1,733 +1,338 @@
 import { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Shield, Clock, Plus, Trash2, Edit2, List } from 'lucide-react';
+import { Settings as SettingsIcon, Shield, Clock, Plus, Trash2, Edit2, List, Bell, Tag } from 'lucide-react';
 import {
-  getCategoriesList,
-  createCategory,
-  updateCategory,
-  deleteCategory,
-  getPrivacy,
-  updatePrivacy,
-  getRetention,
-  updateRetention,
-  getCategoryRules,
-  createCategoryRule,
-  updateCategoryRule,
-  deleteCategoryRule,
-  getTags,
-  createTag,
-  updateTag,
-  deleteTag,
-  getNotificationSettings,
-  updateNotificationSettings,
+  getCategoriesList, createCategory, updateCategory, deleteCategory,
+  getPrivacy, updatePrivacy, getRetention, updateRetention,
+  getCategoryRules, createCategoryRule, updateCategoryRule, deleteCategoryRule,
+  getTags, createTag, updateTag, deleteTag,
+  getNotificationSettings, updateNotificationSettings,
 } from '../lib/api';
-import type { Category, PrivacySettings, RetentionSettings, CategoryRule, Tag, NotificationSettings } from '../types/api';
+import type { Category, PrivacySettings, RetentionSettings, CategoryRule, Tag as TagType, NotificationSettings } from '../types/api';
+
+// ── スタイル定数 ─────────────────────────────────────────────
+const CARD  = { backgroundColor:'#131629', border:'1px solid #1a2040', borderRadius:12 };
+const INPUT = {
+  width:'100%', padding:'8px 12px',
+  backgroundColor:'#0d1025', border:'1px solid #1a2040',
+  borderRadius:8, color:'#8892b0', fontSize:12, outline:'none',
+} as const;
+const BTN_PRIMARY = {
+  display:'flex', alignItems:'center', gap:6,
+  padding:'7px 14px', borderRadius:8,
+  backgroundColor:'#6d28d9', border:'none',
+  color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer',
+} as const;
+const BTN_GHOST = {
+  padding:'6px 10px', borderRadius:6, border:'1px solid #1a2040',
+  backgroundColor:'transparent', color:'#5d6680', fontSize:12, cursor:'pointer',
+} as const;
+
+function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ ...CARD, overflow:'hidden', marginBottom:16 }}>
+      <div style={{ padding:'14px 20px', borderBottom:'1px solid #1a2040', display:'flex', alignItems:'center', gap:8 }}>
+        <Icon size={14} color="#5d6680" />
+        <span style={{ fontSize:13, fontWeight:700, color:'#e2e8f0' }}>{title}</span>
+      </div>
+      <div style={{ padding:'18px 20px' }}>{children}</div>
+    </div>
+  );
+}
 
 export default function Settings() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [privacy, setPrivacy] = useState<PrivacySettings>({ enabled: true, masked_services: [] });
-  const [retention, setRetention] = useState<RetentionSettings>({ retention_days: 90 });
-  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState('#3B82F6');
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [newRulePattern, setNewRulePattern] = useState('');
+  const [categories,           setCategories]           = useState<Category[]>([]);
+  const [privacy,              setPrivacy]              = useState<PrivacySettings>({ enabled:true, masked_services:[] });
+  const [retention,            setRetention]            = useState<RetentionSettings>({ retention_days:90 });
+  const [categoryRules,        setCategoryRules]        = useState<CategoryRule[]>([]);
+  const [tags,                 setTags]                 = useState<TagType[]>([]);
+  const [notifSettings,        setNotifSettings]        = useState<NotificationSettings>({ id:1, enabled:true, time:'09:00', last_sent:null, created_at:null, updated_at:null });
+  const [loading,              setLoading]              = useState(true);
+
+  // Category form
+  const [newCatName,  setNewCatName]  = useState('');
+  const [newCatColor, setNewCatColor] = useState('#6d28d9');
+  const [editingCat,  setEditingCat]  = useState<Category | null>(null);
+
+  // Rule form
+  const [newRulePattern,  setNewRulePattern]  = useState('');
   const [newRuleCategory, setNewRuleCategory] = useState('');
   const [newRulePriority, setNewRulePriority] = useState(0);
-  const [newRuleIsRegex, setNewRuleIsRegex] = useState(false);
-  const [editingRule, setEditingRule] = useState<CategoryRule | null>(null);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [newTagName, setNewTagName] = useState('');
-  const [newTagColor, setNewTagColor] = useState('#3B82F6');
-  const [editingTag, setEditingTag] = useState<Tag | null>(null);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
-    id: 1,
-    enabled: true,
-    time: '09:00',
-    last_sent: null,
-    created_at: null,
-    updated_at: null,
-  });
+  const [newRuleIsRegex,  setNewRuleIsRegex]  = useState(false);
+  const [editingRule,     setEditingRule]     = useState<CategoryRule | null>(null);
+
+  // Tag form
+  const [newTagName,  setNewTagName]  = useState('');
+  const [newTagColor, setNewTagColor] = useState('#3b82f6');
+  const [editingTag,  setEditingTag]  = useState<TagType | null>(null);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [cats, priv, ret, rules, tagsData, notifSettings] = await Promise.all([
-          getCategoriesList().catch(() => []),
-          getPrivacy().catch(() => ({ enabled: true, masked_services: [] })),
-          getRetention().catch(() => ({ retention_days: 90 })),
-          getCategoryRules().catch(() => []),
-          getTags().catch(() => []),
-          getNotificationSettings().catch(() => ({
-            id: 1,
-            enabled: true,
-            time: '09:00',
-            last_sent: null,
-            created_at: null,
-            updated_at: null,
-          })),
-        ]);
-        setCategories(Array.isArray(cats) ? cats : []);
-        setPrivacy(priv);
-        setRetention(ret);
-        setCategoryRules(Array.isArray(rules) ? rules : []);
-        setTags(Array.isArray(tagsData) ? tagsData : []);
-        setNotificationSettings(notifSettings);
-      } catch (error) {
-        console.error('Failed to fetch settings:', error);
-        // デフォルト値を設定
-        setCategories([]);
-        setPrivacy({ enabled: true, masked_services: [] });
-        setRetention({ retention_days: 90 });
-        setCategoryRules([]);
-        setTags([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    Promise.all([
+      getCategoriesList().catch(()=>[]),
+      getPrivacy().catch(()=>({ enabled:true, masked_services:[] })),
+      getRetention().catch(()=>({ retention_days:90 })),
+      getCategoryRules().catch(()=>[]),
+      getTags().catch(()=>[]),
+      getNotificationSettings().catch(()=>({ id:1, enabled:true, time:'09:00', last_sent:null, created_at:null, updated_at:null })),
+    ]).then(([cats, priv, ret, rules, ts, notif]) => {
+      setCategories(Array.isArray(cats) ? cats : []);
+      setPrivacy(priv);
+      setRetention(ret);
+      setCategoryRules(Array.isArray(rules) ? rules : []);
+      setTags(Array.isArray(ts) ? ts : []);
+      setNotifSettings(notif);
+    }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) return;
-    try {
-      await createCategory({ name: newCategoryName, color: newCategoryColor });
-      const updated = await getCategoriesList();
-      setCategories(updated);
-      setNewCategoryName('');
-      setNewCategoryColor('#3B82F6');
-    } catch (error) {
-      console.error('Failed to create category:', error);
-    }
-  };
+  // Category handlers
+  const addCategory    = async () => { if (!newCatName.trim()) return; await createCategory({ name:newCatName, color:newCatColor }); setCategories(await getCategoriesList()); setNewCatName(''); };
+  const saveCategory   = async (c: Category) => { await updateCategory(c.id, { name:c.name, color:c.color }); setCategories(await getCategoriesList()); setEditingCat(null); };
+  const removeCat      = async (id: number) => { await deleteCategory(id); setCategories(await getCategoriesList()); };
 
-  const handleUpdateCategory = async (category: Category) => {
-    try {
-      await updateCategory(category.id, { name: category.name, color: category.color });
-      const updated = await getCategoriesList();
-      setCategories(updated);
-      setEditingCategory(null);
-    } catch (error) {
-      console.error('Failed to update category:', error);
-    }
-  };
+  // Rule handlers
+  const addRule    = async () => { if (!newRulePattern.trim() || !newRuleCategory.trim()) return; await createCategoryRule({ pattern:newRulePattern, category:newRuleCategory, priority:newRulePriority, is_regex:newRuleIsRegex }); setCategoryRules(await getCategoryRules()); setNewRulePattern(''); setNewRuleCategory(''); };
+  const saveRule   = async (r: CategoryRule) => { await updateCategoryRule(r.id, { pattern:r.pattern, category:r.category, priority:r.priority, is_regex:r.is_regex, enabled:r.enabled }); setCategoryRules(await getCategoryRules()); setEditingRule(null); };
+  const removeRule = async (id: number) => { await deleteCategoryRule(id); setCategoryRules(await getCategoryRules()); };
 
-  const handleDeleteCategory = async (id: number) => {
-    try {
-      await deleteCategory(id);
-      const updated = await getCategoriesList();
-      setCategories(updated);
-    } catch (error) {
-      console.error('Failed to delete category:', error);
-    }
-  };
+  // Tag handlers
+  const addTag    = async () => { if (!newTagName.trim()) return; await createTag({ name:newTagName, color:newTagColor }); setTags(await getTags()); setNewTagName(''); };
+  const saveTag   = async (t: TagType) => { await updateTag(t.id, { name:t.name, color:t.color }); setTags(await getTags()); setEditingTag(null); };
+  const removeTag = async (id: number) => { await deleteTag(id); setTags(await getTags()); };
 
-  const handleUpdatePrivacy = async () => {
-    try {
-      await updatePrivacy(privacy);
-    } catch (error) {
-      console.error('Failed to update privacy:', error);
-    }
-  };
-
-  const handleUpdateRetention = async () => {
-    try {
-      await updateRetention(retention);
-    } catch (error) {
-      console.error('Failed to update retention:', error);
-    }
-  };
-
-  const handleAddRule = async () => {
-    if (!newRulePattern.trim() || !newRuleCategory.trim()) return;
-    try {
-      await createCategoryRule({ 
-        pattern: newRulePattern, 
-        category: newRuleCategory,
-        priority: newRulePriority,
-        is_regex: newRuleIsRegex
-      });
-      const updated = await getCategoryRules();
-      setCategoryRules(updated);
-      setNewRulePattern('');
-      setNewRuleCategory('');
-      setNewRulePriority(0);
-      setNewRuleIsRegex(false);
-    } catch (error) {
-      console.error('Failed to create category rule:', error);
-    }
-  };
-
-  const handleUpdateRule = async (rule: CategoryRule) => {
-    try {
-      await updateCategoryRule(rule.id, { 
-        pattern: rule.pattern,
-        category: rule.category,
-        priority: rule.priority,
-        is_regex: rule.is_regex,
-        enabled: rule.enabled
-      });
-      const updated = await getCategoryRules();
-      setCategoryRules(updated);
-      setEditingRule(null);
-    } catch (error) {
-      console.error('Failed to update category rule:', error);
-    }
-  };
-
-  const handleDeleteRule = async (id: number) => {
-    try {
-      await deleteCategoryRule(id);
-      const updated = await getCategoryRules();
-      setCategoryRules(updated);
-    } catch (error) {
-      console.error('Failed to delete category rule:', error);
-    }
-  };
-
-  const handleAddTag = async () => {
-    if (!newTagName.trim()) return;
-    try {
-      await createTag({ name: newTagName, color: newTagColor });
-      const updated = await getTags();
-      setTags(updated);
-      setNewTagName('');
-      setNewTagColor('#3B82F6');
-    } catch (error) {
-      console.error('Failed to create tag:', error);
-    }
-  };
-
-  const handleUpdateTag = async (tag: Tag) => {
-    try {
-      await updateTag(tag.id, { name: tag.name, color: tag.color });
-      const updated = await getTags();
-      setTags(updated);
-      setEditingTag(null);
-    } catch (error) {
-      console.error('Failed to update tag:', error);
-    }
-  };
-
-  const handleDeleteTag = async (id: number) => {
-    try {
-      await deleteTag(id);
-      const updated = await getTags();
-      setTags(updated);
-    } catch (error) {
-      console.error('Failed to delete tag:', error);
-    }
-  };
-
-  const handleUpdateNotificationSettings = async () => {
-    try {
-      await updateNotificationSettings({
-        enabled: notificationSettings.enabled,
-        time: notificationSettings.time,
-      });
-    } catch (error) {
-      console.error('Failed to update notification settings:', error);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200, color:'#3d4560', fontSize:13 }}>読み込み中...</div>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div style={{ maxWidth:800 }}>
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-3">
-          <SettingsIcon className="w-8 h-8 text-gray-900" />
-          <h1 className="text-2xl font-semibold text-gray-900">設定</h1>
+      <div style={{ marginBottom:20 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <SettingsIcon size={18} color="#5d6680" />
+          <h1 style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.03em' }}>設定</h1>
         </div>
-        <p className="text-gray-500 mt-1">カテゴリ、プライバシー、データ保持の設定</p>
+        <p style={{ fontSize:12, color:'#3d4560', marginTop:3 }}>カテゴリ、タグ、プライバシー、通知の設定</p>
       </div>
 
-      {/* Category Management */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <SettingsIcon className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">カテゴリ管理</h2>
-          </div>
+      {/* カテゴリ管理 */}
+      <Section icon={SettingsIcon} title="カテゴリ管理">
+        <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+          <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="新しいカテゴリ名" style={{ ...INPUT, flex:1 }} />
+          <input type="color" value={newCatColor} onChange={e=>setNewCatColor(e.target.value)} style={{ width:36, height:36, borderRadius:6, border:'1px solid #1a2040', backgroundColor:'#0d1025', cursor:'pointer', padding:2 }} />
+          <button onClick={addCategory} style={BTN_PRIMARY}><Plus size={13} />追加</button>
         </div>
-
-        {/* Add Category */}
-        <div className="flex items-center space-x-3 mb-6">
-          <input
-            type="text"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            placeholder="新しいカテゴリ名"
-            className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
-          <input
-            type="color"
-            value={newCategoryColor}
-            onChange={(e) => setNewCategoryColor(e.target.value)}
-            className="w-10 h-10 rounded border border-gray-200 cursor-pointer"
-          />
-          <button
-            onClick={handleAddCategory}
-            className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>追加</span>
-          </button>
-        </div>
-
-        {/* Category List */}
-        <div className="space-y-3">
-          {categories.map((category) => (
-            <div key={category.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              {editingCategory?.id === category.id ? (
-                <div className="flex items-center space-x-3 flex-grow">
-                  <input
-                    type="text"
-                    value={editingCategory.name}
-                    onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                    className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <input
-                    type="color"
-                    value={editingCategory.color}
-                    onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
-                    className="w-10 h-10 rounded border border-gray-200 cursor-pointer"
-                  />
-                  <button
-                    onClick={() => handleUpdateCategory(editingCategory)}
-                    className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-                  >
-                    保存
-                  </button>
-                  <button
-                    onClick={() => setEditingCategory(null)}
-                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
-                  >
-                    キャンセル
-                  </button>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {categories.map(cat => (
+            <div key={cat.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', backgroundColor:'#0d1025', borderRadius:8, border:'1px solid #141828' }}>
+              {editingCat?.id === cat.id ? (
+                <div style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
+                  <input value={editingCat.name} onChange={e=>setEditingCat({...editingCat,name:e.target.value})} style={{ ...INPUT, flex:1 }} />
+                  <input type="color" value={editingCat.color} onChange={e=>setEditingCat({...editingCat,color:e.target.value})} style={{ width:32, height:32, borderRadius:6, border:'1px solid #1a2040', backgroundColor:'#0d1025', cursor:'pointer', padding:2 }} />
+                  <button onClick={()=>saveCategory(editingCat)} style={BTN_PRIMARY}>保存</button>
+                  <button onClick={()=>setEditingCat(null)} style={BTN_GHOST}>キャンセル</button>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    <span className="text-gray-900">{category.name}</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ width:10, height:10, borderRadius:'50%', backgroundColor:cat.color }} />
+                    <span style={{ fontSize:12, color:'#8892b0' }}>{cat.name}</span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setEditingCategory(category)}
-                      className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCategory(category.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <button onClick={()=>setEditingCat(cat)} style={{ ...BTN_GHOST, padding:'4px 8px' }}><Edit2 size={12} /></button>
+                    <button onClick={()=>removeCat(cat.id)} style={{ ...BTN_GHOST, padding:'4px 8px', color:'#ef4444' }}><Trash2 size={12} /></button>
                   </div>
                 </>
               )}
             </div>
           ))}
+          {categories.length === 0 && <p style={{ fontSize:12, color:'#3d4560', textAlign:'center', padding:'20px 0' }}>カテゴリがありません</p>}
         </div>
-      </div>
+      </Section>
 
-      {/* Category Rules Management */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <List className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">カテゴリルール管理</h2>
-          </div>
-        </div>
-
-        {/* Add Rule */}
-        <div className="space-y-3 mb-6">
-          <div className="flex items-center space-x-3">
-            <input
-              type="text"
-              value={newRulePattern}
-              onChange={(e) => setNewRulePattern(e.target.value)}
-              placeholder="パターン（アプリ名または正規表現）"
-              className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-            />
-            <select
-              value={newRuleCategory}
-              onChange={(e) => setNewRuleCategory(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-            >
+      {/* カテゴリルール管理 */}
+      <Section icon={List} title="カテゴリルール管理">
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:14 }}>
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={newRulePattern} onChange={e=>setNewRulePattern(e.target.value)} placeholder="パターン（アプリ名または正規表現）" style={{ ...INPUT, flex:2 }} />
+            <select value={newRuleCategory} onChange={e=>setNewRuleCategory(e.target.value)} style={{ ...INPUT, flex:1, cursor:'pointer' }}>
               <option value="">カテゴリを選択</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
+              {categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
           </div>
-          <div className="flex items-center space-x-3">
-            <input
-              type="number"
-              value={newRulePriority}
-              onChange={(e) => setNewRulePriority(parseInt(e.target.value) || 0)}
-              placeholder="優先度（数値が大きいほど優先）"
-              className="w-48 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-            />
-            <label className="flex items-center space-x-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={newRuleIsRegex}
-                onChange={(e) => setNewRuleIsRegex(e.target.checked)}
-                className="rounded"
-              />
-              <span>正規表現</span>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <input type="number" value={newRulePriority} onChange={e=>setNewRulePriority(parseInt(e.target.value)||0)} placeholder="優先度" style={{ ...INPUT, width:100 }} />
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#5d6680', cursor:'pointer' }}>
+              <input type="checkbox" checked={newRuleIsRegex} onChange={e=>setNewRuleIsRegex(e.target.checked)} />
+              正規表現
             </label>
+            <button onClick={addRule} style={BTN_PRIMARY}><Plus size={13} />追加</button>
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {categoryRules.map(rule => (
+            <div key={rule.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', backgroundColor:'#0d1025', borderRadius:8, border:'1px solid #141828', opacity:rule.enabled?1:0.5 }}>
+              {editingRule?.id === rule.id ? (
+                <div style={{ display:'flex', alignItems:'center', gap:6, flex:1, flexWrap:'wrap' }}>
+                  <input value={editingRule.pattern} onChange={e=>setEditingRule({...editingRule,pattern:e.target.value})} style={{ ...INPUT, width:140 }} />
+                  <select value={editingRule.category} onChange={e=>setEditingRule({...editingRule,category:e.target.value})} style={{ ...INPUT, width:100, cursor:'pointer' }}>
+                    {categories.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                  <input type="number" value={editingRule.priority} onChange={e=>setEditingRule({...editingRule,priority:parseInt(e.target.value)||0})} style={{ ...INPUT, width:60 }} />
+                  <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#5d6680', cursor:'pointer' }}>
+                    <input type="checkbox" checked={editingRule.is_regex} onChange={e=>setEditingRule({...editingRule,is_regex:e.target.checked})} />正規表現
+                  </label>
+                  <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#5d6680', cursor:'pointer' }}>
+                    <input type="checkbox" checked={editingRule.enabled} onChange={e=>setEditingRule({...editingRule,enabled:e.target.checked})} />有効
+                  </label>
+                  <button onClick={()=>saveRule(editingRule)} style={BTN_PRIMARY}>保存</button>
+                  <button onClick={()=>setEditingRule(null)} style={BTN_GHOST}>✕</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:12 }}>
+                    <span style={{ color:'#8892b0', fontWeight:600 }}>{rule.pattern}</span>
+                    {rule.is_regex && <span style={{ fontSize:10, padding:'1px 5px', borderRadius:3, backgroundColor:'rgba(59,130,246,0.15)', color:'#60a5fa' }}>正規表現</span>}
+                    <span style={{ color:'#3d4560' }}>→</span>
+                    <span style={{ color:'#5d6680' }}>{rule.category}</span>
+                    <span style={{ fontSize:10, color:'#3d4560' }}>優先度: {rule.priority}</span>
+                  </div>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <button onClick={()=>setEditingRule(rule)} style={{ ...BTN_GHOST, padding:'4px 8px' }}><Edit2 size={12} /></button>
+                    <button onClick={()=>removeRule(rule.id)} style={{ ...BTN_GHOST, padding:'4px 8px', color:'#ef4444' }}><Trash2 size={12} /></button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {categoryRules.length === 0 && <p style={{ fontSize:12, color:'#3d4560', textAlign:'center', padding:'20px 0' }}>カテゴリルールがありません</p>}
+        </div>
+      </Section>
+
+      {/* タグ管理 */}
+      <Section icon={Tag} title="行動タグ管理">
+        <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+          <input value={newTagName} onChange={e=>setNewTagName(e.target.value)} placeholder="新しいタグ名" style={{ ...INPUT, flex:1 }} />
+          <input type="color" value={newTagColor} onChange={e=>setNewTagColor(e.target.value)} style={{ width:36, height:36, borderRadius:6, border:'1px solid #1a2040', backgroundColor:'#0d1025', cursor:'pointer', padding:2 }} />
+          <button onClick={addTag} style={BTN_PRIMARY}><Plus size={13} />追加</button>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {tags.map(tag => (
+            <div key={tag.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', backgroundColor:'#0d1025', borderRadius:8, border:'1px solid #141828' }}>
+              {editingTag?.id === tag.id ? (
+                <div style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
+                  <input value={editingTag.name} onChange={e=>setEditingTag({...editingTag,name:e.target.value})} style={{ ...INPUT, flex:1 }} />
+                  <input type="color" value={editingTag.color||'#3b82f6'} onChange={e=>setEditingTag({...editingTag,color:e.target.value})} style={{ width:32, height:32, borderRadius:6, border:'1px solid #1a2040', backgroundColor:'#0d1025', cursor:'pointer', padding:2 }} />
+                  <button onClick={()=>saveTag(editingTag)} style={BTN_PRIMARY}>保存</button>
+                  <button onClick={()=>setEditingTag(null)} style={BTN_GHOST}>キャンセル</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ width:10, height:10, borderRadius:'50%', backgroundColor:tag.color||'#3b82f6' }} />
+                    <span style={{ fontSize:12, color:'#8892b0' }}>{tag.name}</span>
+                  </div>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <button onClick={()=>setEditingTag(tag)} style={{ ...BTN_GHOST, padding:'4px 8px' }}><Edit2 size={12} /></button>
+                    <button onClick={()=>removeTag(tag.id)} style={{ ...BTN_GHOST, padding:'4px 8px', color:'#ef4444' }}><Trash2 size={12} /></button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {tags.length === 0 && <p style={{ fontSize:12, color:'#3d4560', textAlign:'center', padding:'20px 0' }}>タグがありません</p>}
+        </div>
+      </Section>
+
+      {/* 通知設定 */}
+      <Section icon={Bell} title="デイリーストーリー通知設定">
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <p style={{ fontSize:13, fontWeight:600, color:'#8892b0', margin:0 }}>通知を有効にする</p>
+              <p style={{ fontSize:11, color:'#3d4560', margin:'3px 0 0' }}>毎日の行動ストーリーを通知します</p>
+            </div>
             <button
-              onClick={handleAddRule}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
+              onClick={() => setNotifSettings({ ...notifSettings, enabled:!notifSettings.enabled })}
+              style={{
+                width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', position:'relative',
+                backgroundColor: notifSettings.enabled ? '#6d28d9' : '#1a2040', transition:'background 0.2s',
+              }}
             >
-              <Plus className="w-4 h-4" />
-              <span>追加</span>
+              <span style={{
+                position:'absolute', top:2, left: notifSettings.enabled ? 22 : 2,
+                width:20, height:20, borderRadius:10, backgroundColor:'#fff',
+                transition:'left 0.2s', display:'block',
+              }} />
             </button>
           </div>
-        </div>
-
-        {/* Rules List */}
-        <div className="space-y-3">
-          {categoryRules.map((rule) => (
-            <div key={rule.id} className={`flex items-center justify-between p-3 rounded-lg ${rule.enabled ? 'bg-gray-50' : 'bg-gray-100 opacity-60'}`}>
-              {editingRule?.id === rule.id ? (
-                <div className="flex items-center space-x-3 flex-grow">
-                  <input
-                    type="text"
-                    value={editingRule.pattern}
-                    onChange={(e) => setEditingRule({ ...editingRule, pattern: e.target.value })}
-                    className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <select
-                    value={editingRule.category}
-                    onChange={(e) => setEditingRule({ ...editingRule, category: e.target.value })}
-                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.name}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={editingRule.priority}
-                    onChange={(e) => setEditingRule({ ...editingRule, priority: parseInt(e.target.value) || 0 })}
-                    className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <label className="flex items-center space-x-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={editingRule.is_regex}
-                      onChange={(e) => setEditingRule({ ...editingRule, is_regex: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span>正規表現</span>
-                  </label>
-                  <label className="flex items-center space-x-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={editingRule.enabled}
-                      onChange={(e) => setEditingRule({ ...editingRule, enabled: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span>有効</span>
-                  </label>
-                  <button
-                    onClick={() => handleUpdateRule(editingRule)}
-                    className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-                  >
-                    保存
-                  </button>
-                  <button
-                    onClick={() => setEditingRule(null)}
-                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
-                  >
-                    キャンセル
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center space-x-3">
-                    <span className="text-gray-900 font-medium">{rule.pattern}</span>
-                    {rule.is_regex && (
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">正規表現</span>
-                    )}
-                    <span className="text-gray-600">→</span>
-                    <span className="text-gray-900">{rule.category}</span>
-                    <span className="text-xs text-gray-500">優先度: {rule.priority}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setEditingRule(rule)}
-                      className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRule(rule.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-          {categoryRules.length === 0 && (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              カテゴリルールがありません
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Tags Management */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <List className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">行動タグ管理</h2>
-          </div>
-        </div>
-
-        {/* Add Tag */}
-        <div className="flex items-center space-x-3 mb-6">
-          <input
-            type="text"
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            placeholder="新しいタグ名"
-            className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
-          <input
-            type="color"
-            value={newTagColor}
-            onChange={(e) => setNewTagColor(e.target.value)}
-            className="w-10 h-10 rounded border border-gray-200 cursor-pointer"
-          />
-          <button
-            onClick={handleAddTag}
-            className="flex items-center space-x-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>追加</span>
-          </button>
-        </div>
-
-        {/* Tags List */}
-        <div className="space-y-3">
-          {tags.map((tag) => (
-            <div key={tag.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              {editingTag?.id === tag.id ? (
-                <div className="flex items-center space-x-3 flex-grow">
-                  <input
-                    type="text"
-                    value={editingTag.name}
-                    onChange={(e) => setEditingTag({ ...editingTag, name: e.target.value })}
-                    className="flex-grow px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
-                  <input
-                    type="color"
-                    value={editingTag.color || '#3B82F6'}
-                    onChange={(e) => setEditingTag({ ...editingTag, color: e.target.value })}
-                    className="w-10 h-10 rounded border border-gray-200 cursor-pointer"
-                  />
-                  <button
-                    onClick={() => handleUpdateTag(editingTag)}
-                    className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-                  >
-                    保存
-                  </button>
-                  <button
-                    onClick={() => setEditingTag(null)}
-                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors"
-                  >
-                    キャンセル
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: tag.color || '#3B82F6' }}
-                    />
-                    <span className="text-gray-900">{tag.name}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setEditingTag(tag)}
-                      className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTag(tag.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-          {tags.length === 0 && (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              行動タグがありません
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Notification Settings */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Clock className="w-5 h-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">デイリーストーリー通知設定</h2>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div>
-              <div className="text-gray-900 font-medium">通知を有効にする</div>
-              <div className="text-gray-500 text-sm">毎日の行動ストーリーを通知します</div>
+              <p style={{ fontSize:13, fontWeight:600, color:'#8892b0', margin:0 }}>通知時間</p>
+              <p style={{ fontSize:11, color:'#3d4560', margin:'3px 0 0' }}>通知を送信する時間</p>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notificationSettings.enabled}
-                onChange={(e) => setNotificationSettings({ ...notificationSettings, enabled: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gray-900"></div>
-            </label>
+            <input type="time" value={notifSettings.time||'09:00'} onChange={e=>setNotifSettings({...notifSettings,time:e.target.value})} disabled={!notifSettings.enabled} style={{ ...INPUT, width:120, opacity:notifSettings.enabled?1:0.4 }} />
           </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-gray-900 font-medium">通知時間</div>
-              <div className="text-gray-500 text-sm">通知を送信する時間</div>
-            </div>
-            <input
-              type="time"
-              value={notificationSettings.time || '09:00'}
-              onChange={(e) => setNotificationSettings({ ...notificationSettings, time: e.target.value })}
-              disabled={!notificationSettings.enabled}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          {notificationSettings.last_sent && (
-            <div className="text-sm text-gray-500">
-              最終送信: {new Date(notificationSettings.last_sent).toLocaleString('ja-JP')}
-            </div>
-          )}
-
-          <button
-            onClick={handleUpdateNotificationSettings}
-            className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-          >
+          <button onClick={()=>updateNotificationSettings({ enabled:notifSettings.enabled, time:notifSettings.time })} style={{ ...BTN_PRIMARY, alignSelf:'flex-start' }}>
             設定を保存
           </button>
         </div>
-      </div>
+      </Section>
 
-      {/* Privacy Settings */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Shield className="w-5 h-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">プライバシー設定</h2>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+      {/* プライバシー設定 */}
+      <Section icon={Shield} title="プライバシー設定">
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div>
-              <p className="text-gray-900 font-medium">プライバシーモード</p>
-              <p className="text-sm text-gray-500">機密サービスをマスクする</p>
+              <p style={{ fontSize:13, fontWeight:600, color:'#8892b0', margin:0 }}>プライバシーモード</p>
+              <p style={{ fontSize:11, color:'#3d4560', margin:'3px 0 0' }}>機密サービスをマスクする</p>
             </div>
             <button
-              onClick={() => setPrivacy({ ...privacy, enabled: !privacy.enabled })}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                privacy.enabled ? 'bg-gray-900' : 'bg-gray-200'
-              }`}
+              onClick={() => setPrivacy({ ...privacy, enabled:!privacy.enabled })}
+              style={{
+                width:44, height:24, borderRadius:12, border:'none', cursor:'pointer', position:'relative',
+                backgroundColor: privacy.enabled ? '#6d28d9' : '#1a2040', transition:'background 0.2s',
+              }}
             >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  privacy.enabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
+              <span style={{
+                position:'absolute', top:2, left: privacy.enabled ? 22 : 2,
+                width:20, height:20, borderRadius:10, backgroundColor:'#fff',
+                transition:'left 0.2s', display:'block',
+              }} />
             </button>
           </div>
-
           <div>
-            <p className="text-gray-900 font-medium mb-2">マスク対象サービス</p>
+            <p style={{ fontSize:13, fontWeight:600, color:'#8892b0', marginBottom:6 }}>マスク対象サービス</p>
             <textarea
               value={privacy.masked_services.join('\n')}
-              onChange={(e) => setPrivacy({ ...privacy, masked_services: e.target.value.split('\n').filter(s => s.trim()) })}
+              onChange={e=>setPrivacy({ ...privacy, masked_services:e.target.value.split('\n').filter(s=>s.trim()) })}
               placeholder="1行につき1つのサービス名"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               rows={4}
+              style={{ ...INPUT, resize:'vertical' }}
             />
           </div>
-
-          <button
-            onClick={handleUpdatePrivacy}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-          >
-            保存
-          </button>
+          <button onClick={()=>updatePrivacy(privacy)} style={{ ...BTN_PRIMARY, alignSelf:'flex-start' }}>保存</button>
         </div>
-      </div>
+      </Section>
 
-      {/* Retention Settings */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Clock className="w-5 h-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">データ保持設定</h2>
-        </div>
-
-        <div className="space-y-4">
+      {/* データ保持設定 */}
+      <Section icon={Clock} title="データ保持設定">
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
           <div>
-            <p className="text-gray-900 font-medium mb-2">保存期間</p>
+            <p style={{ fontSize:13, fontWeight:600, color:'#8892b0', marginBottom:6 }}>保存期間</p>
             <select
               value={retention.retention_days}
-              onChange={(e) => setRetention({ retention_days: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              onChange={e=>setRetention({ retention_days:parseInt(e.target.value) })}
+              style={{ ...INPUT, cursor:'pointer' }}
             >
               <option value={30}>30日</option>
+              <option value={60}>60日</option>
               <option value={90}>90日</option>
+              <option value={180}>180日</option>
               <option value={365}>365日</option>
-              <option value={0}>無期限</option>
             </select>
           </div>
-
-          <button
-            onClick={handleUpdateRetention}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition-colors"
-          >
-            保存
-          </button>
+          <button onClick={()=>updateRetention(retention)} style={{ ...BTN_PRIMARY, alignSelf:'flex-start' }}>保存</button>
         </div>
-      </div>
+      </Section>
     </div>
   );
 }

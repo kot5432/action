@@ -3,193 +3,159 @@ import { Lightbulb, TrendingUp, Clock, Repeat, AlertTriangle, Tag } from 'lucide
 import { getInsights, getTagUsageStats } from '../lib/api';
 import type { Insight, TagUsageStats } from '../types/api';
 
+const SEVERITY_STYLE: Record<string, { bg: string; border: string; icon: string; badge: string; badgeText: string }> = {
+  success: { bg:'rgba(16,185,129,0.06)',  border:'rgba(16,185,129,0.2)',  icon:'#34d399', badge:'rgba(16,185,129,0.15)',  badgeText:'#34d399' },
+  warning: { bg:'rgba(245,158,11,0.06)',  border:'rgba(245,158,11,0.2)',  icon:'#fbbf24', badge:'rgba(245,158,11,0.15)',  badgeText:'#fbbf24' },
+  danger:  { bg:'rgba(239,68,68,0.06)',   border:'rgba(239,68,68,0.2)',   icon:'#f87171', badge:'rgba(239,68,68,0.15)',   badgeText:'#f87171' },
+  info:    { bg:'rgba(59,130,246,0.06)',  border:'rgba(59,130,246,0.2)',  icon:'#60a5fa', badge:'rgba(59,130,246,0.15)',  badgeText:'#60a5fa' },
+};
+
+const getIcon = (type: string) => {
+  switch (type) {
+    case 'pattern': case 'transition': return Repeat;
+    case 'time_pattern': return Clock;
+    case 'focus':   return TrendingUp;
+    case 'derail':  return AlertTriangle;
+    default:        return Lightbulb;
+  }
+};
+
 export default function Insights() {
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [tagStats, setTagStats] = useState<TagUsageStats[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [insights,  setInsights]  = useState<Insight[]>([]);
+  const [tagStats,  setTagStats]  = useState<TagUsageStats[]>([]);
+  const [loading,   setLoading]   = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const [insightsData, tagStatsData] = await Promise.all([
-          getInsights().catch(() => []),
-          getTagUsageStats().catch(() => [])
-        ]);
-        setInsights(Array.isArray(insightsData) ? insightsData : []);
-        setTagStats(Array.isArray(tagStatsData) ? tagStatsData : []);
-      } catch (error) {
-        console.error('Failed to fetch insights:', error);
-        setInsights([]);
-        setTagStats([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    Promise.all([getInsights().catch(()=>[]), getTagUsageStats().catch(()=>[])])
+      .then(([ins, ts]) => {
+        setInsights(Array.isArray(ins) ? ins : []);
+        setTagStats(Array.isArray(ts) ? ts : []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200, color:'#3d4560', fontSize:13 }}>読み込み中...</div>
+  );
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'pattern':
-      case 'transition':
-        return <Repeat className="w-5 h-5" />;
-      case 'time_pattern':
-        return <Clock className="w-5 h-5" />;
-      case 'focus':
-        return <TrendingUp className="w-5 h-5" />;
-      case 'derail':
-        return <AlertTriangle className="w-5 h-5" />;
-      default:
-        return <Lightbulb className="w-5 h-5" />;
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'success':
-        return 'bg-green-50 border-green-200 text-green-800';
-      case 'warning':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-800';
-      case 'danger':
-        return 'bg-red-50 border-red-200 text-red-800';
-      case 'info':
-      default:
-        return 'bg-blue-50 border-blue-200 text-blue-800';
-    }
-  };
-
-  // カテゴリ別にグループ化
-  const groupedInsights = insights.reduce((acc, insight) => {
-    if (!acc[insight.category]) {
-      acc[insight.category] = [];
-    }
+  const grouped = insights.reduce((acc, insight) => {
+    if (!acc[insight.category]) acc[insight.category] = [];
     acc[insight.category].push(insight);
     return acc;
   }, {} as Record<string, Insight[]>);
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div style={{ maxWidth: 1100 }}>
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-3">
-          <Lightbulb className="w-8 h-8 text-gray-900" />
-          <h1 className="text-2xl font-semibold text-gray-900">インサイト</h1>
+      <div style={{ marginBottom:24 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <Lightbulb size={18} color="#f59e0b" />
+          <h1 style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.03em' }}>インサイト</h1>
         </div>
-        <p className="text-gray-500 mt-1">行動パターンから傾向を抽出</p>
+        <p style={{ fontSize:12, color:'#3d4560', marginTop:3 }}>行動パターンから傾向を抽出</p>
       </div>
 
       {insights.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">まだデータがありません。データを収集してパターンを発見しましょう。</p>
+        <div style={{ textAlign:'center', padding:'60px 0', color:'#3d4560', fontSize:13 }}>
+          まだデータがありません。データを収集してパターンを発見しましょう。
         </div>
       ) : (
-        <div className="space-y-6">
-          {Object.entries(groupedInsights).map(([category, categoryInsights]) => (
+        <div style={{ display:'flex', flexDirection:'column', gap:28 }}>
+          {Object.entries(grouped).map(([category, categoryInsights]) => (
             <div key={category}>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">{category}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {categoryInsights.map((insight, index) => (
-                  <div
-                    key={`${category}-${index}`}
-                    className={`bg-white border rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow ${getSeverityColor(insight.severity).split(' ')[1]}`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className={`flex-shrink-0 p-2 rounded-lg ${getSeverityColor(insight.severity)}`}>
-                        <div className="text-current">
-                          {getIcon(insight.type)}
+              <h2 style={{ fontSize:13, fontWeight:700, color:'#5d6680', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>
+                {category}
+              </h2>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }}>
+                {categoryInsights.map((insight, index) => {
+                  const sev   = SEVERITY_STYLE[insight.severity] ?? SEVERITY_STYLE.info;
+                  const IconComp = getIcon(insight.type);
+                  return (
+                    <div key={index} style={{
+                      backgroundColor:'#131629',
+                      border:`1px solid ${sev.border}`,
+                      borderRadius:10, padding:'16px 18px',
+                      background:`linear-gradient(135deg, ${sev.bg} 0%, #131629 100%)`,
+                    }}>
+                      <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+                        <div style={{
+                          width:32, height:32, borderRadius:8, flexShrink:0,
+                          backgroundColor:`${sev.icon}18`,
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <IconComp size={14} color={sev.icon} />
                         </div>
-                      </div>
-                      <div className="flex-grow">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className={`text-xs font-medium px-2 py-1 rounded-full ${getSeverityColor(insight.severity)}`}>
-                            {insight.severity}
-                          </span>
-                          <span className="text-xs text-gray-500 capitalize">
-                            {insight.type.replace('_', ' ')}
-                          </span>
-                        </div>
-                        <p className="text-gray-900 font-medium mb-2">{insight.message}</p>
-                        
-                        {/* 原因分析表示 */}
-                        {insight.data && Object.keys(insight.data).length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-gray-100">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">原因分析</p>
-                            <div className="space-y-1">
-                              {insight.data.cause && (
-                                <p className="text-xs text-gray-600">
-                                  <span className="font-medium">原因:</span> {insight.data.cause}
-                                </p>
-                              )}
-                              {insight.data.transition_services && (
-                                <p className="text-xs text-gray-600">
-                                  <span className="font-medium">遷移先:</span> {insight.data.transition_services}
-                                </p>
-                              )}
-                              {insight.data.average_duration && (
-                                <p className="text-xs text-gray-600">
-                                  <span className="font-medium">平均滞在:</span> {Math.round(insight.data.average_duration / 60)}分
-                                </p>
-                              )}
-                              {insight.data.return_rate && (
-                                <p className="text-xs text-gray-600">
-                                  <span className="font-medium">復帰率:</span> {insight.data.return_rate}%
-                                </p>
-                              )}
-                              {insight.data.time_range && (
-                                <p className="text-xs text-gray-600">
-                                  <span className="font-medium">時間帯:</span> {insight.data.time_range}
-                                </p>
-                              )}
-                            </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
+                            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:4, backgroundColor:sev.badge, color:sev.badgeText, fontWeight:700 }}>
+                              {insight.severity}
+                            </span>
+                            <span style={{ fontSize:10, color:'#3d4560' }}>{insight.type.replace('_',' ')}</span>
                           </div>
-                        )}
+                          <p style={{ fontSize:12, color:'#8892b0', fontWeight:500, lineHeight:1.6, margin:0 }}>{insight.message}</p>
+
+                          {insight.data && Object.keys(insight.data).length > 0 && (
+                            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #1a2040' }}>
+                              <p style={{ fontSize:10, fontWeight:700, color:'#5d6680', marginBottom:6 }}>原因分析</p>
+                              <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                                {insight.data.cause && (
+                                  <p style={{ fontSize:11, color:'#3d4560', margin:0 }}>
+                                    <span style={{ color:'#5d6680', fontWeight:600 }}>原因: </span>{insight.data.cause}
+                                  </p>
+                                )}
+                                {insight.data.transition_services && (
+                                  <p style={{ fontSize:11, color:'#3d4560', margin:0 }}>
+                                    <span style={{ color:'#5d6680', fontWeight:600 }}>遷移先: </span>{insight.data.transition_services}
+                                  </p>
+                                )}
+                                {insight.data.average_duration && (
+                                  <p style={{ fontSize:11, color:'#3d4560', margin:0 }}>
+                                    <span style={{ color:'#5d6680', fontWeight:600 }}>平均滞在: </span>{Math.round(insight.data.average_duration/60)}分
+                                  </p>
+                                )}
+                                {insight.data.return_rate && (
+                                  <p style={{ fontSize:11, color:'#3d4560', margin:0 }}>
+                                    <span style={{ color:'#5d6680', fontWeight:600 }}>復帰率: </span>{insight.data.return_rate}%
+                                  </p>
+                                )}
+                                {insight.data.time_range && (
+                                  <p style={{ fontSize:11, color:'#3d4560', margin:0 }}>
+                                    <span style={{ color:'#5d6680', fontWeight:600 }}>時間帯: </span>{insight.data.time_range}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Tag Usage Stats */}
+      {/* タグ別使用統計 */}
       {tagStats.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">タグ別使用統計</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {tagStats.map((stat, index) => (
-              <div
-                key={index}
-                className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 p-2 rounded-lg bg-blue-50">
-                    <Tag className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: stat.color || '#3B82F6' }}
-                      />
-                      <span className="text-gray-900 font-medium">{stat.name}</span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      使用回数: {stat.usage_count}回
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      総時間: {Math.round(stat.total_duration / 60)}分
-                    </div>
-                  </div>
+        <div style={{ marginTop:32 }}>
+          <h2 style={{ fontSize:13, fontWeight:700, color:'#5d6680', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:12 }}>
+            タグ別使用統計
+          </h2>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+            {tagStats.map((stat, i) => (
+              <div key={i} style={{ backgroundColor:'#131629', border:'1px solid #1a2040', borderRadius:10, padding:'14px 16px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                  <Tag size={13} color="#60a5fa" />
+                  <span style={{ fontSize:12, color:'#8892b0', fontWeight:600 }}>{stat.tag}</span>
+                </div>
+                <div style={{ fontSize:11, color:'#3d4560' }}>
+                  総時間: <span style={{ color:'#5d6680' }}>{Math.round(stat.total_seconds/60)}分</span>
+                </div>
+                <div style={{ fontSize:11, color:'#3d4560', marginTop:2 }}>
+                  セッション: <span style={{ color:'#5d6680' }}>{stat.session_count}回</span>
                 </div>
               </div>
             ))}

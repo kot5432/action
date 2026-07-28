@@ -52,13 +52,15 @@ export default function App() {
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <nav style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 2 }} role="navigation" aria-label="メインナビゲーション">
           {navItems.map(({ id, label, icon: Icon }) => {
             const active = currentView === id;
             return (
               <button
                 key={id}
                 onClick={() => setCurrentView(id)}
+                aria-label={label}
+                aria-current={active ? 'page' : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 12px',
@@ -83,9 +85,11 @@ export default function App() {
         </nav>
 
         {/* Bottom actions */}
-        <div style={{ padding: '12px 10px 8px', borderTop: `1px solid ${SIDEBAR_BORDER}` }}>
+        <div style={{ padding: '12px 10px 8px', borderTop: `1px solid ${SIDEBAR_BORDER}` }} role="group" aria-label="設定とサポート">
           <button
             onClick={() => setCurrentView('settings')}
+            aria-label={t('nav.settings')}
+            aria-current={currentView === 'settings' ? 'page' : undefined}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '9px 12px', borderRadius: 8,
@@ -102,6 +106,7 @@ export default function App() {
           </button>
           <button
             onClick={() => changeLanguage(i18n.language === 'ja' ? 'en' : 'ja')}
+            aria-label={i18n.language === 'ja' ? '英語に切り替え' : '日本語に切り替え'}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '9px 12px', borderRadius: 8,
@@ -121,7 +126,8 @@ export default function App() {
             width: '100%', textAlign: 'left',
             backgroundColor: 'transparent',
             color: INACTIVE_COLOR, fontSize: 13,
-          }}>
+          }}
+          aria-label={t('nav.support')}>
             <HelpCircle size={15} />
             <span>{t('nav.support')}</span>
           </button>

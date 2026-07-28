@@ -9,6 +9,8 @@ const Timeline = lazy(() => import('./components/Timeline'));
 const Story = lazy(() => import('./components/Story'));
 const Insights = lazy(() => import('./components/Insights'));
 const Settings = lazy(() => import('./components/Settings'));
+const WeeklyReport = lazy(() => import('./components/WeeklyReport'));
+const Tutorial = lazy(() => import('./components/Tutorial'));
 
 type View = 'dashboard' | 'timeline' | 'story' | 'insights' | 'settings';
 
@@ -35,6 +37,10 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#0d1025' }}>
+      <Suspense fallback={<div style={{ color: '#8892b0', textAlign: 'center', padding: 40 }}>読み込み中...</div>}>
+        <Tutorial />
+      </Suspense>
+      
       {/* Sidebar */}
       <aside style={{
         width: 200, flexShrink: 0,

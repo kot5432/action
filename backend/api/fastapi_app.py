@@ -1333,3 +1333,201 @@ def delete_backup(name: str):
             return {"success": False, "message": "削除に失敗しました"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/weekly-report")
+def get_weekly_report(start_date: Optional[str] = Query(None, description="開始日 (YYYY-MM-DD), デフォルトは今週の月曜日")):
+    """
+    週次レポートを取得
+    Response: {week_summary, daily_summaries, insights, trends}
+    """
+    from datetime import timedelta
+    
+    if start_date is None:
+        # 今週の月曜日を取得
+        today = datetime.now()
+        start_date = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 週の範囲を計算
+    start_dt = datetime.fromisoformat(start_date)
+    end_dt = start_dt + timedelta(days=6)
+    end_date = end_dt.strftime("%Y-%m-%d")
+    
+    # 週次サマリー
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    cur.execute(f'''
+        SELECT 
+            COALESCE(SUM(duration_seconds), 0) as total_seconds,
+            COUNT(DISTINCT DATE(start_time)) as active_days,
+            COUNT(*) as session_count
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    week_summary = cur.fetchone()
+    
+    # 日次サマリー
+    cur.execute(f'''
+        SELECT 
+            DATE(start_time) as date,
+            COALESCE(SUM(duration_seconds), 0) as total_seconds,
+            COUNT(*) as session_count
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+        GROUP BY DATE(start_time)
+        ORDER BY date
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    daily_summaries = []
+    for row in cur.fetchall():
+        daily_summaries.append({
+            "date": row['date'],
+            "total_minutes": int(row['total_seconds'] / 60),
+            "session_count": row['session_count']
+        })
+    
+    # トップサービス
+    cur.execute(f'''
+        SELECT 
+            service,
+            SUM(duration_seconds) as total_seconds
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+        GROUP BY service
+        ORDER BY total_seconds DESC
+        LIMIT 10
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    top_services = []
+    for row in cur.fetchall():
+        top_services.append({
+            "service": _mask(row['service']),
+            "total_minutes": int(row['total_seconds'] / 60)
+        })
+    
+    conn.close()
+    
+    return {
+        "period": {
+            "start_date": start_date,
+            "end_date": end_date
+        },
+        "summary": {
+            "total_minutes": int(week_summary['total_seconds'] / 60),
+            "active_days": week_summary['active_days'],
+            "session_count": week_summary['session_count'],
+            "avg_daily_minutes": int((week_summary['total_seconds'] / 60) / max(week_summary['active_days'], 1))
+        },
+        "daily_summaries": daily_summaries,
+        "top_services": top_services
+    }
+
+
+@app.get("/transition-analysis")
+def get_transition_analysis(date: Optional[str] = Query(None, description="日付 (YYYY-MM-DD), デフォルトは今日")):
+    """
+    高度なサービス遷移分析
+    Response: {transition_matrix, common_paths, return_rates, focus_interruptions}
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 遷移行列
+    cur.execute('''
+        SELECT 
+            from_service,
+            to_service,
+            COUNT(*) as transition_count
+        FROM transitions 
+        WHERE DATE(timestamp) = ?
+        GROUP BY from_service, to_service
+        ORDER BY transition_count DESC
+    ''', (date,))
+    transitions = cur.fetchall()
+    
+    # 遷移行列の構築
+    transition_matrix = {}
+    for row in transitions:
+        from_service = _mask(row['from_service'])
+        to_service = _mask(row['to_service'])
+        if from_service not in transition_matrix:
+            transition_matrix[from_service] = {}
+        transition_matrix[from_service][to_service] = row['transition_count']
+    
+    # 一般的な遷移パス
+    cur.execute('''
+        SELECT 
+            from_service,
+            to_service,
+            COUNT(*) as count
+        FROM transitions 
+        WHERE DATE(timestamp) = ?
+        GROUP BY from_service, to_service
+        ORDER BY count DESC
+        LIMIT 20
+    ''', (date,))
+    common_paths = []
+    for row in cur.fetchall():
+        common_paths.append({
+            "from": _mask(row['from_service']),
+            "to": _mask(row['to_service']),
+            "count": row['count']
+        })
+    
+    # カテゴリ間の復帰率
+    cur.execute('''
+        SELECT 
+            from_category,
+            to_category,
+            COUNT(*) as transitions,
+            SUM(CASE WHEN from_category = to_category THEN 1 ELSE 0 END) as returns
+        FROM transitions 
+        WHERE DATE(timestamp) = ?
+        GROUP BY from_category, to_category
+    ''', (date,))
+    return_rates = []
+    for row in cur.fetchall():
+        if row['transitions'] > 0:
+            return_rates.append({
+                "from_category": row['from_category'],
+                "to_category": row['to_category'],
+                "return_rate": row['returns'] / row['transitions']
+            })
+    
+    # 集中カテゴリへの中断分析
+    focus_placeholders = ','.join('?' * len(config.FOCUS_CATEGORIES))
+    cur.execute(f'''
+        SELECT 
+            from_category,
+            to_category,
+            COUNT(*) as interruption_count
+        FROM transitions 
+        WHERE DATE(timestamp) = ?
+        AND from_category IN ({focus_placeholders})
+        AND to_category NOT IN ({focus_placeholders})
+        GROUP BY from_category, to_category
+        ORDER BY interruption_count DESC
+    ''', (date, *config.FOCUS_CATEGORIES, *config.FOCUS_CATEGORIES))
+    focus_interruptions = []
+    for row in cur.fetchall():
+        focus_interruptions.append({
+            "focus_category": row['from_category'],
+            "interruption_category": row['to_category'],
+            "count": row['interruption_count']
+        })
+    
+    conn.close()
+    
+    return {
+        "date": date,
+        "transition_matrix": transition_matrix,
+        "common_paths": common_paths,
+        "return_rates": return_rates,
+        "focus_interruptions": focus_interruptions
+    }

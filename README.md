@@ -38,7 +38,6 @@ ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し�
 - psutil
 - pynput
 - pandas
-- duckdb
 
 ### Frontend
 - React 19

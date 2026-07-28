@@ -1,15 +1,13 @@
 import sqlite3
-import os
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.path.join(ROOT, "data")
-DB_PATH = os.path.join(DATA_DIR, "action_tracker.db")
+# 設定管理
+from backend.core.config import config
 
 
 def get_db_connection():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    config.get_data_dir()
+    conn = sqlite3.connect(config.DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 

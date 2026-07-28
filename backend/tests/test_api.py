@@ -11,6 +11,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from fastapi.testclient import TestClient
 from backend.api.fastapi_app import app
 
+# 認証を無効化してテスト
+import backend.core.config as config_module
+config_module.config.AUTH_ENABLED = False
+
 client = TestClient(app)
 
 

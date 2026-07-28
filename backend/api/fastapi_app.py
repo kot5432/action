@@ -1,28 +1,28 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
 import sqlite3
 import json
-import os
 from pydantic import BaseModel
 
-# Configuration
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.path.join(ROOT, "data")
-DB_PATH = os.path.join(DATA_DIR, "action_tracker.db")
-STATE_FILE = os.path.join(DATA_DIR, "current_session.json")
+# 設定管理
+from backend.core.config import config
+from backend.core.auth import verify_api_key_header
 
-# Constants
-EXCLUDED_SERVICES = ('unknown', 'Unknown', '不明')
-LIVE_SESSION_MAX_AGE_SECONDS = 10
+# 条件付き認証デコレーター
+def optional_auth():
+    """認証が有効な場合のみ認証を要求"""
+    if config.AUTH_ENABLED:
+        return Depends(verify_api_key_header)
+    return lambda: None
 
 app = FastAPI(title="ActionTracker API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +47,7 @@ async def general_error_handler(request, exc):
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(config.DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -70,7 +70,7 @@ def _read_live_session() -> Optional[dict]:
     LIVE_SESSION_MAX_AGE_SECONDS 秒以上更新がなければ古いとみなして None を返す。
     """
     try:
-        with open(STATE_FILE, encoding="utf-8") as f:
+        with open(config.get_state_file(), encoding="utf-8") as f:
             data = json.load(f)
         updated_at = datetime.fromisoformat(data["updated_at"])
         age = (datetime.now() - updated_at).total_seconds()
@@ -110,11 +110,11 @@ def get_dashboard():
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
     cur.execute(f'''
         SELECT COALESCE(SUM(duration_seconds), 0) as total
         FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
-    ''', (today, *EXCLUDED_SERVICES))
+    ''', (today, *config.EXCLUDED_SERVICES))
     db_total_sec = cur.fetchone()['total']
 
     cur.execute('''
@@ -181,7 +181,7 @@ def get_timeline(date: Optional[str] = Query(default=None)):
 
     conn = get_db()
     cur = conn.cursor()
-    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
     cur.execute(f'''
         SELECT
             TIME(start_time)  as start,
@@ -193,7 +193,7 @@ def get_timeline(date: Optional[str] = Query(default=None)):
         FROM sessions
         WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
         ORDER BY start_time
-    ''', (date, *EXCLUDED_SERVICES))
+    ''', (date, *config.EXCLUDED_SERVICES))
 
     result = []
     for row in cur.fetchall():
@@ -280,13 +280,13 @@ def get_story(date: Optional[str] = Query(default=None)):
 
     conn = get_db()
     cur = conn.cursor()
-    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
     cur.execute(f'''
         SELECT TIME(start_time) as time, app_name, service, category, duration_seconds
         FROM sessions
         WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
         ORDER BY start_time
-    ''', (date, *EXCLUDED_SERVICES))
+    ''', (date, *config.EXCLUDED_SERVICES))
 
     story = []
     total_drift_minutes = 0
@@ -359,13 +359,13 @@ def get_categories():
     """
     conn = get_db()
     cur = conn.cursor()
-    placeholders = ','.join('?' * len(EXCLUDED_SERVICES))
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
     cur.execute(f'''
         SELECT category, SUM(duration_seconds) as total
         FROM sessions
         WHERE category IS NOT NULL AND service NOT IN ({placeholders})
         GROUP BY category ORDER BY total DESC
-    ''', (*EXCLUDED_SERVICES,))
+    ''', (*config.EXCLUDED_SERVICES,))
     result = {}
     for row in cur.fetchall():
         h = int(row['total'] / 3600)

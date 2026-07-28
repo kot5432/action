@@ -1531,3 +1531,198 @@ def get_transition_analysis(date: Optional[str] = Query(None, description="日�
         "return_rates": return_rates,
         "focus_interruptions": focus_interruptions
     }
+
+
+@app.get("/monthly-report")
+def get_monthly_report(year: Optional[int] = Query(None, description="年, デフォルトは今年"), month: Optional[int] = Query(None, description="月, デフォルトは今月")):
+    """
+    月次レポートを取得
+    Response: {month_summary, weekly_summaries, trends, insights}
+    """
+    from datetime import timedelta
+    import calendar
+    
+    if year is None:
+        year = datetime.now().year
+    if month is None:
+        month = datetime.now().month
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 月の範囲を計算
+    first_day = datetime(year, month, 1)
+    last_day = datetime(year, month, calendar.monthrange(year, month)[1])
+    
+    start_date = first_day.strftime("%Y-%m-%d")
+    end_date = last_day.strftime("%Y-%m-%d")
+    
+    # 月次サマリー
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    cur.execute(f'''
+        SELECT 
+            COALESCE(SUM(duration_seconds), 0) as total_seconds,
+            COUNT(DISTINCT DATE(start_time)) as active_days,
+            COUNT(*) as session_count
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    month_summary = cur.fetchone()
+    
+    # 週次サマリー
+    cur.execute(f'''
+        SELECT 
+            strftime('%Y-%W', start_time) as week,
+            COALESCE(SUM(duration_seconds), 0) as total_seconds,
+            COUNT(DISTINCT DATE(start_time)) as active_days
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+        GROUP BY strftime('%Y-%W', start_time)
+        ORDER BY week
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    weekly_summaries = []
+    for row in cur.fetchall():
+        weekly_summaries.append({
+            "week": row['week'],
+            "total_minutes": int(row['total_seconds'] / 60),
+            "active_days": row['active_days']
+        })
+    
+    # カテゴリ別利用時間
+    cur.execute(f'''
+        SELECT 
+            category,
+            SUM(duration_seconds) as total_seconds
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+        GROUP BY category
+        ORDER BY total_seconds DESC
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    category_usage = []
+    for row in cur.fetchall():
+        category_usage.append({
+            "category": row['category'],
+            "total_minutes": int(row['total_seconds'] / 60)
+        })
+    
+    # 時間帯別分析
+    cur.execute(f'''
+        SELECT 
+            CAST(strftime('%H', start_time) AS INTEGER) as hour,
+            SUM(duration_seconds) as total_seconds
+        FROM sessions 
+        WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? 
+        AND service NOT IN ({placeholders})
+        GROUP BY hour
+        ORDER BY hour
+    ''', (start_date, end_date, *config.EXCLUDED_SERVICES))
+    hourly_usage = []
+    for row in cur.fetchall():
+        hourly_usage.append({
+            "hour": row['hour'],
+            "total_minutes": int(row['total_seconds'] / 60)
+        })
+    
+    conn.close()
+    
+    return {
+        "period": {
+            "year": year,
+            "month": month,
+            "start_date": start_date,
+            "end_date": end_date
+        },
+        "summary": {
+            "total_minutes": int(month_summary['total_seconds'] / 60),
+            "active_days": month_summary['active_days'],
+            "session_count": month_summary['session_count'],
+            "avg_daily_minutes": int((month_summary['total_seconds'] / 60) / max(month_summary['active_days'], 1))
+        },
+        "weekly_summaries": weekly_summaries,
+        "category_usage": category_usage,
+        "hourly_usage": hourly_usage
+    }
+
+
+@app.get("/export/data")
+def export_data(
+    format: str = Query("json", description="エクスポート形式 (json/csv)"),
+    start_date: Optional[str] = Query(None, description="開始日 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="終了日 (YYYY-MM-DD)")
+):
+    """
+    データをエクスポート
+    Response: ファイルダウンロード
+    """
+    from fastapi.responses import JSONResponse, StreamingResponse
+    import csv
+    import io
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # セッションデータを取得
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    date_filter = ""
+    params = []
+    
+    if start_date and end_date:
+        date_filter = "WHERE DATE(start_time) >= ? AND DATE(start_time) <= ? AND service NOT IN ({})"
+        params = [start_date, end_date] + config.EXCLUDED_SERVICES
+    elif start_date:
+        date_filter = "WHERE DATE(start_time) >= ? AND service NOT IN ({})"
+        params = [start_date] + config.EXCLUDED_SERVICES
+    elif end_date:
+        date_filter = "WHERE DATE(start_time) <= ? AND service NOT IN ({})"
+        params = [end_date] + config.EXCLUDED_SERVICES
+    else:
+        date_filter = "WHERE service NOT IN ({})"
+        params = config.EXCLUDED_SERVICES
+    
+    cur.execute(f'''
+        SELECT 
+            app_name,
+            service,
+            category,
+            start_time,
+            duration_seconds
+        FROM sessions 
+        {date_filter}
+        ORDER BY start_time
+    '''.format(placeholders), params)
+    
+    sessions = cur.fetchall()
+    conn.close()
+    
+    # データをフォーマット
+    data = []
+    for row in sessions:
+        data.append({
+            "app_name": row['app_name'],
+            "service": _mask(row['service']),
+            "category": row['category'],
+            "start_time": row['start_time'],
+            "duration_seconds": row['duration_seconds']
+        })
+    
+    if format == "csv":
+        # CSVエクスポート
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=["app_name", "service", "category", "start_time", "duration_seconds"])
+        writer.writeheader()
+        writer.writerows(data)
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=actiontracker_data.csv"}
+        )
+    else:
+        # JSONエクスポート
+        return JSONResponse(
+            content=data,
+            headers={"Content-Disposition": "attachment; filename=actiontracker_data.json"}
+        )

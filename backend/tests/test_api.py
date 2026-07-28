@@ -27,6 +27,28 @@ def test_root_endpoint():
     assert "version" in data
 
 
+def test_health_endpoint():
+    """ヘルスチェックエンドポイントのテスト"""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "database" in data
+    assert "tracker" in data
+
+
+def test_current_endpoint():
+    """現在セッションエンドポイントのテスト"""
+    response = client.get("/current")
+    assert response.status_code == 200
+    data = response.json()
+    assert "app_name" in data
+    assert "service" in data
+    assert "category" in data
+    assert "started_at" in data
+    assert "duration_seconds" in data
+
+
 def test_dashboard_endpoint():
     """ダッシュボードエンドポイントのテスト"""
     response = client.get("/dashboard")
@@ -67,3 +89,30 @@ def test_error_handling():
     # 存在しないエンドポイントへのアクセス
     response = client.get("/nonexistent")
     assert response.status_code == 404
+
+
+def test_summary_endpoint():
+    """サマリーエンドポイントのテスト"""
+    response = client.get("/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert "total_usage_minutes" in data
+    assert "switch_count" in data
+    assert "focus_sessions" in data
+    assert "top_services" in data
+
+
+def test_services_endpoint():
+    """サービスエンドポイントのテスト"""
+    response = client.get("/services?range=today")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+
+def test_categories_usage_endpoint():
+    """カテゴリ使用エンドポイントのテスト"""
+    response = client.get("/categories/usage?range=today")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)

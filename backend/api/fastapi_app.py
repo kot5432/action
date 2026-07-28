@@ -19,6 +19,24 @@ def optional_auth():
         return Depends(verify_api_key_header)
     return lambda: None
 
+
+def get_date_filter(range: str) -> str:
+    """
+    日付範囲フィルターを生成
+    Args:
+        range: 範囲指定 (today, 7d, 30d, all)
+    Returns:
+        SQL WHERE句のフィルター条件
+    """
+    if range == "today":
+        return "DATE(start_time) = DATE('now')"
+    elif range == "7d":
+        return "DATE(start_time) >= DATE('now', '-7 days')"
+    elif range == "30d":
+        return "DATE(start_time) >= DATE('now', '-30 days')"
+    else:  # all
+        return "1=1"
+
 app = FastAPI(title="ActionTracker API", version="2.0.0")
 
 app.add_middleware(
@@ -93,6 +111,72 @@ def _read_live_session() -> Optional[dict]:
 @app.get("/")
 def root():
     return {"message": "ActionTracker API", "version": "2.0.0"}
+
+
+@app.get("/health")
+def health_check():
+    """
+    システム状態確認
+    Response: {status, database, tracker}
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        conn.close()
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+
+    # Trackerの状態は簡易的にOKとする
+    tracker_status = "running"
+
+    return {
+        "status": "ok" if db_status == "connected" else "error",
+        "database": db_status,
+        "tracker": tracker_status,
+    }
+
+
+@app.get("/current")
+def get_current():
+    """
+    現在進行中のセッションを取得
+    Response: {app_name, service, category, started_at, duration_seconds}
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT app_name, service, category, start_time, duration_seconds
+        FROM sessions
+        ORDER BY start_time DESC LIMIT 1
+    ''')
+    latest = cur.fetchone()
+    conn.close()
+
+    if not latest:
+        return {
+            "app_name": None,
+            "service": None,
+            "category": None,
+            "started_at": None,
+            "duration_seconds": 0,
+        }
+
+    # 現在のセッションの継続時間を再計算
+    started_at = latest['start_time']
+    if isinstance(started_at, str):
+        started_at = datetime.fromisoformat(started_at)
+    duration_seconds = int((datetime.now() - started_at).total_seconds())
+
+    return {
+        "app_name": latest['app_name'],
+        "service": _mask(latest['service']),
+        "category": latest['category'],
+        "started_at": started_at.isoformat(),
+        "duration_seconds": duration_seconds,
+    }
 
 
 @app.get("/dashboard")
@@ -352,6 +436,63 @@ def get_insights(date: Optional[str] = Query(None, description="日付 (YYYY-MM-
         return [{"type": "error", "category": "エラー", "message": str(e), "severity": "danger", "data": {}}]
 
 
+@app.get("/summary")
+def get_summary(date: Optional[str] = Query(None, description="日付 (YYYY-MM-DD), デフォルトは今日")):
+    """
+    日次サマリーを取得
+    Response: {total_usage_minutes, switch_count, focus_sessions, top_services}
+    """
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 総利用時間
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    cur.execute(f'''
+        SELECT COALESCE(SUM(duration_seconds), 0) as total
+        FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
+    ''', (date, *config.EXCLUDED_SERVICES))
+    total_usage_minutes = int(cur.fetchone()['total'] / 60)
+    
+    # 切替回数
+    cur.execute('''
+        SELECT COUNT(*) as cnt FROM transitions WHERE DATE(timestamp) = ?
+    ''', (date,))
+    switch_count = cur.fetchone()['cnt']
+    
+    # フォーカスセッション数（簡易計算）
+    focus_placeholders = ','.join('?' * len(config.FOCUS_CATEGORIES))
+    cur.execute(f'''
+        SELECT COUNT(*) as cnt FROM sessions 
+        WHERE DATE(start_time) = ? AND category IN ({focus_placeholders})
+    ''', (date, *config.FOCUS_CATEGORIES))
+    focus_sessions = cur.fetchone()['cnt']
+    
+    # トップサービス
+    cur.execute(f'''
+        SELECT service, SUM(duration_seconds) as total
+        FROM sessions WHERE DATE(start_time) = ? AND service NOT IN ({placeholders})
+        GROUP BY service ORDER BY total DESC LIMIT 5
+    ''', (date, *config.EXCLUDED_SERVICES))
+    top_services = []
+    for row in cur.fetchall():
+        top_services.append({
+            "service": _mask(row['service']),
+            "minutes": int(row['total'] / 60)
+        })
+    
+    conn.close()
+    
+    return {
+        "total_usage_minutes": total_usage_minutes,
+        "switch_count": switch_count,
+        "focus_sessions": focus_sessions,
+        "top_services": top_services
+    }
+
+
 @app.get("/categories")
 @cache_result(ttl=60)  # 1分間キャッシュ
 def get_categories():
@@ -373,6 +514,64 @@ def get_categories():
         h = int(row['total'] / 3600)
         m = int((row['total'] % 3600) / 60)
         result[row['category']] = f"{h}時間{m}分" if h > 0 else f"{m}分"
+    conn.close()
+    return result
+
+
+@app.get("/services")
+def get_services(range: str = Query("today", description="範囲 (today, 7d, 30d, all)")):
+    """
+    サービス別利用時間を取得
+    Response: [{service, minutes}]
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    
+    date_filter = get_date_filter(range)
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    cur.execute(f'''
+        SELECT service, SUM(duration_seconds) as total
+        FROM sessions
+        WHERE {date_filter} AND service NOT IN ({placeholders})
+        GROUP BY service ORDER BY total DESC
+    ''', (*config.EXCLUDED_SERVICES,))
+    
+    result = []
+    for row in cur.fetchall():
+        result.append({
+            "service": _mask(row['service']),
+            "minutes": int(row['total'] / 60)
+        })
+    
+    conn.close()
+    return result
+
+
+@app.get("/categories/usage")
+def get_categories_usage(range: str = Query("today", description="範囲 (today, 7d, 30d, all)")):
+    """
+    カテゴリ別利用時間を取得
+    Response: [{category, minutes}]
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    
+    date_filter = get_date_filter(range)
+    placeholders = ','.join('?' * len(config.EXCLUDED_SERVICES))
+    cur.execute(f'''
+        SELECT category, SUM(duration_seconds) as total
+        FROM sessions
+        WHERE {date_filter} AND category IS NOT NULL AND service NOT IN ({placeholders})
+        GROUP BY category ORDER BY total DESC
+    ''', (*config.EXCLUDED_SERVICES,))
+    
+    result = []
+    for row in cur.fetchall():
+        result.append({
+            "category": row['category'],
+            "minutes": int(row['total'] / 60)
+        })
+    
     conn.close()
     return result
 

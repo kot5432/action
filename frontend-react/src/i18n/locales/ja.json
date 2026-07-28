@@ -1,0 +1,47 @@
+{
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "timeline": "タイムライン",
+    "story": "行動ストーリー",
+    "insights": "インサイト",
+    "settings": "設定",
+    "support": "サポート"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "currentApp": "現在のアプリ",
+    "currentService": "現在のサービス",
+    "currentCategory": "現在のカテゴリ",
+    "sessionDuration": "セッション時間",
+    "todayUsage": "今日の利用時間",
+    "switchCount": "切替回数",
+    "loading": "読み込み中..."
+  },
+  "timeline": {
+    "title": "タイムライン",
+    "date": "日付",
+    "duration": "時間",
+    "category": "カテゴリ"
+  },
+  "story": {
+    "title": "行動ストーリー",
+    "loading": "ストーリー生成中..."
+  },
+  "insights": {
+    "title": "インサイト",
+    "noInsights": "インサイトがありません"
+  },
+  "settings": {
+    "title": "設定",
+    "language": "言語",
+    "privacy": "プライバシー",
+    "retention": "データ保持"
+  },
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラーが発生しました",
+    "retry": "再試行",
+    "save": "保存",
+    "cancel": "キャンセル"
+  }
+}

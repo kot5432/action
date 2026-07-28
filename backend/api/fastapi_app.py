@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Query, HTTPException, Depends, APIRouter, Request
+from fastapi import FastAPI, Query, HTTPException, Depends, APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import sqlite3
 import json
 from pydantic import BaseModel
@@ -16,6 +16,27 @@ from backend.core.cache import cache_result
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+# WebSocket接続管理
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
 
 # 条件付き認証デコレーター
 def optional_auth():
@@ -44,7 +65,31 @@ def get_date_filter(range: str) -> str:
 
 
 # メインアプリケーション
-app = FastAPI(title="ActionTracker API", version="2.0.0")
+app = FastAPI(
+    title="ActionTracker API",
+    version="2.0.0",
+    description="行動追跡・分析API - ユーザーの行動パターンを追跡し、インサイトを提供する",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "v1",
+            "description": "APIバージョン1のエンドポイント"
+        },
+        {
+            "name": "health",
+            "description": "システム状態確認エンドポイント"
+        },
+        {
+            "name": "dashboard",
+            "description": "ダッシュボード関連エンドポイント"
+        },
+        {
+            "name": "backup",
+            "description": "バックアップ・復元エンドポイント"
+        }
+    ]
+)
 
 # レート制限設定
 limiter = Limiter(key_func=get_remote_address)
@@ -126,6 +171,7 @@ def _read_live_session() -> Optional[dict]:
 @v1_router.get("/")
 @limiter.limit("100/minute")
 def root(request: Request):
+    """APIルートエンドポイント"""
     return {"message": "ActionTracker API", "version": "2.0.0"}
 
 
@@ -1204,3 +1250,86 @@ def send_daily_story_notification():
 
 # v1ルーターをアプリケーションにマウント
 app.include_router(v1_router)
+
+# WebSocketエンドポイント
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # 受信したメッセージをブロードキャスト
+            await manager.broadcast({
+                "type": "message",
+                "data": data,
+                "timestamp": datetime.now().isoformat()
+            })
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
+# バックアップエンドポイント
+@app.post("/backup/create", tags=["backup"])
+def create_backup(name: Optional[str] = None):
+    """
+    データベースバックアップを作成
+    Response: {success: bool, backup_path: str}
+    """
+    from backend.core.backup import backup_manager
+    
+    try:
+        backup_path = backup_manager.create_backup(name)
+        return {"success": True, "backup_path": backup_path}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/backup/list", tags=["backup"])
+def list_backups():
+    """
+    バックアップ一覧を取得
+    Response: {success: bool, backups: list}
+    """
+    from backend.core.backup import backup_manager
+    
+    try:
+        backups = backup_manager.list_backups()
+        return {"success": True, "backups": backups}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/backup/restore", tags=["backup"])
+def restore_backup(name: str):
+    """
+    バックアップから復元
+    Response: {success: bool, message: str}
+    """
+    from backend.core.backup import backup_manager
+    
+    try:
+        success = backup_manager.restore_backup(name)
+        if success:
+            return {"success": True, "message": "復元が完了しました"}
+        else:
+            return {"success": False, "message": "復元に失敗しました"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.delete("/backup/{name}", tags=["backup"])
+def delete_backup(name: str):
+    """
+    バックアップを削除
+    Response: {success: bool, message: str}
+    """
+    from backend.core.backup import backup_manager
+    
+    try:
+        success = backup_manager.delete_backup(name)
+        if success:
+            return {"success": True, "message": "削除が完了しました"}
+        else:
+            return {"success": False, "message": "削除に失敗しました"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

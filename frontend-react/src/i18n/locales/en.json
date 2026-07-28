@@ -1,0 +1,47 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "timeline": "Timeline",
+    "story": "Story",
+    "insights": "Insights",
+    "settings": "Settings",
+    "support": "Support"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "currentApp": "Current App",
+    "currentService": "Current Service",
+    "currentCategory": "Current Category",
+    "sessionDuration": "Session Duration",
+    "todayUsage": "Today's Usage",
+    "switchCount": "Switch Count",
+    "loading": "Loading..."
+  },
+  "timeline": {
+    "title": "Timeline",
+    "date": "Date",
+    "duration": "Duration",
+    "category": "Category"
+  },
+  "story": {
+    "title": "Story",
+    "loading": "Generating story..."
+  },
+  "insights": {
+    "title": "Insights",
+    "noInsights": "No insights available"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "privacy": "Privacy",
+    "retention": "Data Retention"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel"
+  }
+}

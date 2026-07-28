@@ -1,5 +1,7 @@
 import { useState, lazy, Suspense } from 'react';
-import { LayoutDashboard, Calendar, BookOpen, Lightbulb, BarChart2, Search, Settings as SettingsIcon, Bell, RefreshCw, PlusCircle, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, Calendar, BookOpen, Lightbulb, BarChart2, Search, Settings as SettingsIcon, Bell, RefreshCw, PlusCircle, HelpCircle, Globe } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import './i18n/config';
 
 // 遅延読み込みでコンポーネントを分割
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -10,21 +12,26 @@ const Settings = lazy(() => import('./components/Settings'));
 
 type View = 'dashboard' | 'timeline' | 'story' | 'insights' | 'settings';
 
-const navItems = [
-  { id: 'dashboard' as View, label: 'ダッシュボード', icon: LayoutDashboard },
-  { id: 'timeline'  as View, label: 'タイムライン',   icon: Calendar },
-  { id: 'story'     as View, label: '行動ストーリー', icon: BookOpen },
-  { id: 'insights'  as View, label: 'インサイト',     icon: Lightbulb },
-];
-
-const SIDEBAR_BG   = '#0a0c1d';
-const SIDEBAR_BORDER = '#141828';
-const ACTIVE_BG    = 'rgba(109,40,217,0.15)';
-const ACTIVE_COLOR = '#a78bfa';
-const INACTIVE_COLOR = '#5d6680';
-
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const { t, i18n } = useTranslation();
+
+  const navItems = [
+    { id: 'dashboard' as View, label: t('nav.dashboard'), icon: LayoutDashboard },
+    { id: 'timeline'  as View, label: t('nav.timeline'),   icon: Calendar },
+    { id: 'story'     as View, label: t('nav.story'),     icon: BookOpen },
+    { id: 'insights'  as View, label: t('nav.insights'),  icon: Lightbulb },
+  ];
+
+  const changeLanguage = (lng: string) => {
+    i18n.changeLanguage(lng);
+  };
+
+  const SIDEBAR_BG   = '#0a0c1d';
+  const SIDEBAR_BORDER = '#141828';
+  const ACTIVE_BG    = 'rgba(109,40,217,0.15)';
+  const ACTIVE_COLOR = '#a78bfa';
+  const INACTIVE_COLOR = '#5d6680';
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: '#0d1025' }}>
@@ -91,7 +98,21 @@ export default function App() {
             }}
           >
             <SettingsIcon size={15} />
-            <span>設定</span>
+            <span>{t('nav.settings')}</span>
+          </button>
+          <button
+            onClick={() => changeLanguage(i18n.language === 'ja' ? 'en' : 'ja')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 12px', borderRadius: 8,
+              border: 'none', cursor: 'pointer',
+              width: '100%', textAlign: 'left',
+              backgroundColor: 'transparent',
+              color: INACTIVE_COLOR, fontSize: 13,
+            }}
+          >
+            <Globe size={15} />
+            <span>{i18n.language === 'ja' ? 'English' : '日本語'}</span>
           </button>
           <button style={{
             display: 'flex', alignItems: 'center', gap: 10,
@@ -102,7 +123,7 @@ export default function App() {
             color: INACTIVE_COLOR, fontSize: 13,
           }}>
             <HelpCircle size={15} />
-            <span>サポート</span>
+            <span>{t('nav.support')}</span>
           </button>
         </div>
 

@@ -21,8 +21,12 @@ ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し�
 - **インサイト生成**: 行動パターンから傾向を抽出
 - **行動カテゴリ分析**: 開発、学習、娯楽、SNS、コミュニケーションなどのカテゴリ別分析
 - **カテゴリ管理**: カテゴリの追加、編集、削除
+- **カテゴリルール管理**: 正規表現パターンによる自動カテゴリ分類
+- **行動タグ管理**: サービスにタグを付与して管理
 - **プライバシー設定**: 機密サービスのマスク設定
 - **データ保持設定**: データの保存期間設定
+- **通知設定**: デイリーストーリーの通知設定
+- **行動スコアリング**: 集中度、生産性指数の計算
 
 ## 技術スタック
 
@@ -37,7 +41,7 @@ ActionTrackerは、ユーザーのPC上での行動履歴を収集・分析し�
 - duckdb
 
 ### Frontend
-- React 18
+- React 19
 - TypeScript
 - Vite
 - Tailwind CSS
@@ -105,15 +109,7 @@ npm run dev
 ルートエンドポイント
 - Response: `{message, version}`
 
-#### GET /health
-システム状態確認
-- Response: `{status, database, tracker}`
-
 ### データ取得エンドポイント
-
-#### GET /current
-現在進行中のセッションを取得
-- Response: `{app_name, service, category, started_at, duration_seconds}`
 
 #### GET /dashboard
 現在状態を取得
@@ -136,22 +132,23 @@ npm run dev
 
 #### GET /insights
 インサイトを取得
-- Response: `[{type, message}]`
-
-#### GET /summary
-日次サマリーを取得
 - Query: `?date=2026-06-16` (オプション)
-- Response: `{total_usage_minutes, switch_count, focus_sessions, top_services}`
+- Response: `[{type, category, message, severity, data}]`
 
-#### GET /services
-サービス別利用時間を取得
-- Query: `?range=today` (today, 7d, 30d, all)
-- Response: `[{service, minutes}]`
+#### GET /daily-story
+デイリーストーリーを取得（スコアリング版）
+- Query: `?date=2026-06-16` (オプション)
+- Response: `{date, story, total_focus_minutes, total_derail_count, score}`
 
-#### GET /categories/usage
-カテゴリ別利用時間を取得
-- Query: `?range=today` (today, 7d, 30d, all)
-- Response: `[{category, minutes}]`
+#### GET /session-blocks
+セッションブロックを取得
+- Query: `?date=2026-06-16` (オプション)
+- Response: `{date, blocks: [{start_time, end_time, duration_seconds, category, is_focus, is_derail, focus_level, session_count}]}`
+
+#### GET /scores
+行動スコアを取得
+- Query: `?date=2026-06-16` (オプション)
+- Response: `{date, total_minutes, focus_minutes, distract_minutes, session_count, derail_count, return_rate, score_focus, score_derail, productivity_index}`
 
 ### 管理エンドポイント
 
@@ -253,8 +250,33 @@ npm run dev
 | カラム | 型 | 説明 |
 |--------|------|------|
 | id | INTEGER | 主キー |
-| service | TEXT | サービス名 |
+| pattern | TEXT | 正規表現パターン |
 | category | TEXT | カテゴリ名 |
+| priority | INTEGER | 優先度 |
+| is_regex | BOOLEAN | 正規表現フラグ |
+| enabled | BOOLEAN | 有効フラグ |
+| created_at | DATETIME | 作成日時 |
+| updated_at | DATETIME | 更新日時 |
+
+### tags
+行動タグ管理用テーブル
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| id | INTEGER | 主キー |
+| name | TEXT | タグ名 |
+| color | TEXT | タグ色 |
+| created_at | DATETIME | 作成日時 |
+
+### service_tags
+サービスとタグの関連付けテーブル
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| id | INTEGER | 主キー |
+| service | TEXT | サービス名 |
+| tag_id | INTEGER | タグID（外部キー） |
+| created_at | DATETIME | 作成日時 |
 
 ### categories
 カテゴリ管理用テーブル
@@ -274,6 +296,18 @@ npm run dev
 |--------|------|------|
 | key | TEXT | 設定キー |
 | value | TEXT | 設定値 |
+
+### notification_settings
+通知設定管理用テーブル
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| id | INTEGER | 主キー |
+| enabled | BOOLEAN | 有効フラグ |
+| time | TEXT | 通知時間 |
+| last_sent | TEXT | 最終送信日時 |
+| created_at | DATETIME | 作成日時 |
+| updated_at | DATETIME | 更新日時 |
 
 ## ライセンス
 

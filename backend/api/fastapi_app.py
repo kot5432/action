@@ -10,6 +10,7 @@ from pydantic import BaseModel
 # 設定管理
 from backend.core.config import config
 from backend.core.auth import verify_api_key_header
+from backend.core.cache import cache_result
 
 # 条件付き認証デコレーター
 def optional_auth():
@@ -352,6 +353,7 @@ def get_insights(date: Optional[str] = Query(None, description="日付 (YYYY-MM-
 
 
 @app.get("/categories")
+@cache_result(ttl=60)  # 1分間キャッシュ
 def get_categories():
     """
     行動カテゴリ分析

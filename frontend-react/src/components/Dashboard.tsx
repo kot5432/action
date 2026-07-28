@@ -194,7 +194,7 @@ export default function Dashboard() {
             <MessageSquare size={14} color="#f59e0b" />
             <span style={{ fontSize: 12, fontWeight: 600, color: '#8892b0' }}>今日の一言</span>
           </div>
-          {dailyStory?.story && dailyStory.story !== '今日のデータはまだありません' ? (
+          {dailyStory?.story && typeof dailyStory.story === 'string' && dailyStory.story !== '今日のデータはまだありません' ? (
             <p style={{ fontSize: 12, color: '#8892b0', lineHeight: 1.7, margin: 0 }}>
               {dailyStory.story.length > 160 ? dailyStory.story.slice(0, 160) + '…' : dailyStory.story}
             </p>

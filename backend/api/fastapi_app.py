@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from datetime import datetime
 from typing import Optional
 import sqlite3
@@ -26,6 +27,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 統一的なエラーハンドラー
+@app.exception_handler(sqlite3.Error)
+async def sqlite_error_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Database error", "detail": str(exc)}
+    )
+
+
+@app.exception_handler(Exception)
+async def general_error_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc)}
+    )
 
 
 def get_db():

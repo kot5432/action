@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException, Depends
+from fastapi import FastAPI, Query, HTTPException, Depends, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
@@ -11,6 +11,11 @@ from pydantic import BaseModel
 from backend.core.config import config
 from backend.core.auth import verify_api_key_header
 from backend.core.cache import cache_result
+
+# レート制限
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # 条件付き認証デコレーター
 def optional_auth():
@@ -37,7 +42,17 @@ def get_date_filter(range: str) -> str:
     else:  # all
         return "1=1"
 
+
+# メインアプリケーション
 app = FastAPI(title="ActionTracker API", version="2.0.0")
+
+# レート制限設定
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# APIバージョン1ルーター
+v1_router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 app.add_middleware(
     CORSMiddleware,
@@ -105,16 +120,18 @@ def _read_live_session() -> Optional[dict]:
 
 
 # ─────────────────────────────────────────────
-# エンドポイント
+# エンドポイント（v1）
 # ─────────────────────────────────────────────
 
-@app.get("/")
-def root():
+@v1_router.get("/")
+@limiter.limit("100/minute")
+def root(request: Request):
     return {"message": "ActionTracker API", "version": "2.0.0"}
 
 
-@app.get("/health")
-def health_check():
+@v1_router.get("/health")
+@limiter.limit("60/minute")
+def health_check(request: Request):
     """
     システム状態確認
     Response: {status, database, tracker}
@@ -138,8 +155,21 @@ def health_check():
     }
 
 
+# 後方互換性のために古いパスも維持（リダイレクト）
+@app.get("/health")
+def health_check_legacy():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/api/v1/health", status_code=301)
+
+
+@app.get("/")
+def root():
+    return {"message": "ActionTracker API", "version": "2.0.0"}
+
+
 @app.get("/current")
-def get_current():
+@limiter.limit("30/minute")
+def get_current(request: Request):
     """
     現在進行中のセッションを取得
     Response: {app_name, service, category, started_at, duration_seconds}
@@ -180,7 +210,8 @@ def get_current():
 
 
 @app.get("/dashboard")
-def get_dashboard():
+@limiter.limit("30/minute")
+def get_dashboard(request: Request):
     """
     現在状態取得（ライブセッション優先）
     Response: {current_app, current_service, current_category,
@@ -255,7 +286,8 @@ def get_dashboard():
 
 
 @app.get("/timeline")
-def get_timeline(date: Optional[str] = Query(default=None)):
+@limiter.limit("20/minute")
+def get_timeline(request: Request, date: Optional[str] = Query(default=None)):
     """
     タイムライン表示（ライブセッションを末尾に追加）
     Response: [{start, end, app, service, category, duration_seconds}]
@@ -1168,3 +1200,7 @@ def send_daily_story_notification():
         return {"success": True, "message": "通知を送信しました"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# v1ルーターをアプリケーションにマウント
+app.include_router(v1_router)

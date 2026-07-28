@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { LayoutDashboard, Calendar, BookOpen, Lightbulb, BarChart2, Search, Settings as SettingsIcon, Bell, RefreshCw, PlusCircle, HelpCircle } from 'lucide-react';
-import Dashboard from './components/Dashboard';
-import Timeline from './components/Timeline';
-import Story from './components/Story';
-import Insights from './components/Insights';
-import Settings from './components/Settings';
+
+// 遅延読み込みでコンポーネントを分割
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const Timeline = lazy(() => import('./components/Timeline'));
+const Story = lazy(() => import('./components/Story'));
+const Insights = lazy(() => import('./components/Insights'));
+const Settings = lazy(() => import('./components/Settings'));
 
 type View = 'dashboard' | 'timeline' | 'story' | 'insights' | 'settings';
 
@@ -169,11 +171,13 @@ export default function App() {
 
         {/* Content */}
         <main style={{ flex: 1, overflow: 'auto', padding: 24 }}>
-          {currentView === 'dashboard' && <Dashboard />}
-          {currentView === 'timeline'  && <Timeline />}
-          {currentView === 'story'     && <Story />}
-          {currentView === 'insights'  && <Insights />}
-          {currentView === 'settings'  && <Settings />}
+          <Suspense fallback={<div style={{ color: '#8892b0', textAlign: 'center', padding: 40 }}>読み込み中...</div>}>
+            {currentView === 'dashboard' && <Dashboard />}
+            {currentView === 'timeline'  && <Timeline />}
+            {currentView === 'story'     && <Story />}
+            {currentView === 'insights'  && <Insights />}
+            {currentView === 'settings'  && <Settings />}
+          </Suspense>
         </main>
       </div>
     </div>

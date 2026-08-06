@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { getTimeline } from '../lib/api_mvp';
 import Calendar from './Calendar';
 
@@ -13,7 +14,6 @@ const CAT_COLOR: Record<string, string> = {
 
 const CARD = { backgroundColor: '#131629', border: '1px solid #1a2040', borderRadius: 12 };
 
-const toMin = (t: string) => { const [h,m,s] = t.split(':').map(Number); return h*60+m+(s||0)/60; };
 const fmtDur = (sec: number) => {
   const m = Math.floor(sec/60), s = sec%60;
   if (m >= 60) { const h = Math.floor(m/60); return `${h}h ${m%60}m`; }
@@ -33,6 +33,7 @@ export default function Timeline() {
   const [timeline, setTimeline] = useState<any[]>([]);
   const [date, setDate] = useState(localDateStr());
   const [loading, setLoading] = useState(true);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -50,14 +51,42 @@ export default function Timeline() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
       {/* ページヘッダー */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.03em' }}>タイムライン</h1>
           <p style={{ fontSize:12, color:'#3d4560', marginTop:3 }}>{fmtDate(date)}</p>
         </div>
-        {/* カレンダー */}
-        <Calendar selectedDate={date} onDateSelect={setDate} />
+        {/* カレンダーボタン */}
+        <button
+          onClick={() => setShowCalendar(!showCalendar)}
+          style={{
+            display:'flex', alignItems:'center', gap:6,
+            padding:'8px 14px', borderRadius:8,
+            backgroundColor: showCalendar ? '#6d28d9' : '#131629',
+            border:'1px solid #1a2040',
+            cursor:'pointer',
+            color: showCalendar ? '#fff' : '#8892b0',
+            fontSize:12, fontWeight:500,
+          }}
+        >
+          <CalendarIcon size={14} />
+          {fmtDate(date)}
+        </button>
       </div>
+
+      {/* カレンダーポップアップ */}
+      {showCalendar && (
+        <div style={{ position:'relative' }}>
+          <div style={{
+            position:'absolute',
+            right:0,
+            top:8,
+            zIndex:10,
+          }}>
+            <Calendar selectedDate={date} onDateSelect={(d) => { setDate(d); setShowCalendar(false); }} />
+          </div>
+        </div>
+      )}
 
       {/* 統計カード */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }}>

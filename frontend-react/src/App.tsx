@@ -2,9 +2,9 @@ import { useState, lazy, Suspense } from 'react';
 import { LayoutDashboard, Calendar, Settings as SettingsIcon, BarChart2 } from 'lucide-react';
 
 // 遅延読み込みでコンポーネントを分割
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const Timeline = lazy(() => import('./components/Timeline'));
-const Settings = lazy(() => import('./components/Settings'));
+const Dashboard = lazy(() => import('./components/Dashboard_mvp'));
+const Timeline = lazy(() => import('./components/Timeline_mvp'));
+const Settings = lazy(() => import('./components/Settings_mvp'));
 
 type View = 'dashboard' | 'timeline' | 'settings';
 

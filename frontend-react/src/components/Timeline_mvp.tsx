@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { getTimeline } from '../lib/api_mvp';
+import Calendar from './Calendar';
 
 const CAT_COLOR: Record<string, string> = {
   '開発': '#3b82f6',
@@ -42,12 +42,6 @@ export default function Timeline() {
       .finally(() => setLoading(false));
   }, [date]);
 
-  const changeDate = (d: number) => {
-    const dt = new Date(date);
-    dt.setDate(dt.getDate() + d);
-    setDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`);
-  };
-
   const totalSec = timeline.reduce((s,e) => s+e.duration_seconds, 0);
   const focusSec = timeline.filter(e => e.category==='開発'||e.category==='学習').reduce((s,e)=>s+e.duration_seconds,0);
   const focusPct = totalSec > 0 ? Math.round(focusSec/totalSec*100) : 0;
@@ -56,24 +50,13 @@ export default function Timeline() {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
       {/* ページヘッダー */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16 }}>
         <div>
           <h1 style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', letterSpacing:'-0.03em' }}>タイムライン</h1>
           <p style={{ fontSize:12, color:'#3d4560', marginTop:3 }}>{fmtDate(date)}</p>
         </div>
-        {/* 日付ナビ */}
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button onClick={() => changeDate(-1)} style={{ width:32, height:32, borderRadius:8, border:'1px solid #1a2040', backgroundColor:'#131629', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#5d6680' }}>
-            <ChevronLeft size={16} />
-          </button>
-          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', backgroundColor:'#131629', border:'1px solid #1a2040', borderRadius:8 }}>
-            <Calendar size={13} color="#5d6680" />
-            <span style={{ fontSize:12, color:'#8892b0', fontWeight:500 }}>{fmtDate(date)}</span>
-          </div>
-          <button onClick={() => changeDate(1)} style={{ width:32, height:32, borderRadius:8, border:'1px solid #1a2040', backgroundColor:'#131629', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#5d6680' }}>
-            <ChevronRight size={16} />
-          </button>
-        </div>
+        {/* カレンダー */}
+        <Calendar selectedDate={date} onDateSelect={setDate} />
       </div>
 
       {/* 統計カード */}

@@ -3,10 +3,66 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from typing import Optional
 import sqlite3
+import os
+
+# 設定管理
+from backend.core.config import config
+
+# データベース初期化
+config.get_data_dir()
+DB_PATH = config.DATABASE_PATH
+
+def init_database():
+    """MVP用データベース初期化"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # sessionsテーブル
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sessions (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_time       DATETIME NOT NULL,
+            end_time         DATETIME NOT NULL,
+            duration_seconds INTEGER,
+            app_name         TEXT,
+            service          TEXT,
+            category         TEXT
+        )
+    ''')
+    
+    # categoriesテーブル
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL UNIQUE,
+            color      TEXT,
+            created_at DATETIME,
+            updated_at DATETIME
+        )
+    ''')
+    
+    # デフォルトカテゴリの挿入
+    default_categories = [
+        ('開発', '#3b82f6'),
+        ('学習', '#10b981'),
+        ('娯楽', '#f59e0b'),
+        ('SNS', '#f43f5e'),
+        ('コミュニケーション', '#a78bfa'),
+        ('その他', '#64748b'),
+    ]
+    
+    for name, color in default_categories:
+        cursor.execute('INSERT OR IGNORE INTO categories (name, color, created_at) VALUES (?, ?, datetime("now"))', (name, color))
+    
+    conn.commit()
+    conn.close()
+
+# データベース初期化実行
+init_database()
 
 # データベース接続
 def get_db():
-    conn = sqlite3.connect('action_tracker.db')
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
